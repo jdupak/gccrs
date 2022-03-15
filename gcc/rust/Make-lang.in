@@ -206,7 +206,7 @@ RUST_LIBDEPS = $(LIBDEPS) ../libgrust/libproc_macro_internal/libproc_macro_inter
 crab1$(exeext): $(RUST_ALL_OBJS) attribs.o $(BACKEND) $(RUST_LIBDEPS) $(rust.prev)
 	@$(call LINK_PROGRESS,$(INDEX.rust),start)
 	+$(LLINKER) $(ALL_LINKERFLAGS) $(RUST_LDFLAGS) -o $@ \
-	      $(RUST_ALL_OBJS) attribs.o $(BACKEND) $(LIBS) ../libgrust/libproc_macro_internal/libproc_macro_internal.a $(BACKENDLIBS)
+	      $(RUST_ALL_OBJS) attribs.o $(BACKEND) libffi_polonius.a $(LIBS) ../libgrust/libproc_macro_internal/libproc_macro_internal.a $(BACKENDLIBS)
 	@$(call LINK_PROGRESS,$(INDEX.rust),end)
 
 # Build hooks.
@@ -343,7 +343,7 @@ rust.install-man:
 # Used for handling bootstrap
 
 rust.stage1: stage1-start
-	-mv rust/*$(objext) stage1/rust
+	-mv rust/*$(objext) stage2/rust
 rust.stage2: stage2-start
 	-mv rust/*$(objext) stage2/rust
 rust.stage3: stage3-start
