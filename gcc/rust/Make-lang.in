@@ -148,6 +148,7 @@ GRS_OBJS = \
     rust/rust-hir-type-check-stmt.o \
     rust/rust-hir-type-check-enumitem.o \
     rust/rust-hir-type-check-implitem.o \
+    rust/rust-polonius.o \
     rust/rust-borrow-checker.o \
     rust/rust-bir-builder-expr-stmt.o \
     rust/rust-bir-dump.o \
@@ -447,13 +448,17 @@ rust/%.o: rust/checks/errors/%.cc
 	$(COMPILE) $(RUST_CXXFLAGS) $(RUST_INCLUDES) $<
 	$(POSTCOMPILE)
 
+# build rust/checks/errors/borrowck files in rust folder
+rust/%.o: rust/checks/errors/borrowck/%.cc
+	$(COMPILE) $(RUST_CXXFLAGS) $(RUST_INCLUDES) $<
+	$(POSTCOMPILE)
+
 # build privacy pass files in rust folder
 rust/%.o: rust/checks/errors/privacy/%.cc
 	$(COMPILE) $(RUST_CXXFLAGS) $(RUST_INCLUDES) $<
 	$(POSTCOMPILE)
 
-# build borrow checking pass files in rust folder
-rust/%.o: rust/checks/errors/borrowck/%.cc
+rust/%.o: rust/checks/errors/borrowck/polonius/%.cc
 	$(COMPILE) $(RUST_CXXFLAGS) $(RUST_INCLUDES) $<
 	$(POSTCOMPILE)
 
