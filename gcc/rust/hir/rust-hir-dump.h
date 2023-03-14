@@ -37,6 +37,54 @@ private:
   Indent indentation;
   std::ostream &stream;
 
+  /**
+   * Compatibility layer for using the visitor pattern on polymorphic classes
+   * with a unified overload syntax. This allows us to call `visit` both on
+   * types implementing `accept_vis` method and for classes for which the
+   * `visit` method is directly implemented.
+   */
+  template <typename T> void visit (std::unique_ptr<T> &node);
+
+  /**
+   * @see visit<std::unique_ptr<T>>
+   */
+  template <typename T> void visit (T &node);
+
+  /**
+   * Visit all items in given @collection, placing the separator in between but
+   * not at the end.
+   * Start and end offset allow to visit only a "slice" from the collection.
+   */
+  template <typename T>
+  void visit_items_joined_by_separator (T &collection,
+					const std::string &separator = "",
+					size_t start_offset = 0,
+					size_t end_offset = 0);
+
+  /**
+   * Visit item placing indentation before and trailing string + end of line
+   * after.
+   */
+  template <typename T>
+  void visit_as_line (T &item, const std::string &trailing = "");
+
+  /**
+   * Visit each item in @collection "as line".
+   *
+   * @see visit_as_line
+   */
+  template <typename T>
+  void visit_items_as_lines (T &collection, const std::string &trailing = "");
+
+  /**
+   * Visit each item in @collection as lines inside a block delimited by braces
+   * with increased indentation. Also includes special handling for empty
+   * collection to print only the delimiters with no new line inside.
+   */
+  template <typename T>
+  void visit_items_as_block (T &collection, const std::string &line_trailing,
+			     char left_brace = '[', char right_brace = ']');
+
   virtual void visit (Lifetime &) override;
   virtual void visit (LifetimeParam &) override;
   virtual void visit (PathInExpression &) override;

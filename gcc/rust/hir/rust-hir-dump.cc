@@ -65,6 +65,76 @@ Dump::go (HIR::Crate &crate)
   stream << "\n}" << std::endl;
 }
 
+template <typename T>
+void
+Dump::visit (std::unique_ptr<T> &node)
+{
+  node->accept_vis (*this);
+}
+
+template <typename T>
+void
+Dump::visit (T &node)
+{
+  node.accept_vis (*this);
+}
+
+template <typename T>
+void
+Dump::visit_items_joined_by_separator (T &collection,
+				       const std::string &separator,
+				       size_t start_offset, size_t end_offset)
+{
+  if (collection.size () > start_offset)
+    {
+      visit (collection.at (start_offset));
+      auto size = collection.size () - end_offset;
+      for (size_t i = start_offset + 1; i < size; i++)
+	{
+	  stream << separator;
+	  visit (collection.at (i));
+	}
+    }
+}
+
+template <typename T>
+void
+Dump::visit_as_line (T &item, const std::string &trailing)
+{
+  stream << indentation;
+  visit (item);
+  stream << trailing << '\n';
+}
+
+template <typename T>
+void
+Dump::visit_items_as_lines (T &collection, const std::string &trailing)
+{
+  for (auto &item : collection)
+    visit_as_line (item, trailing);
+}
+
+template <typename T>
+void
+Dump::visit_items_as_block (T &collection, const std::string &line_trailing,
+			    char left_brace, char right_brace)
+{
+  if (collection.empty ())
+    {
+      stream << left_brace << right_brace << '\n';
+    }
+  else
+    {
+      stream << left_brace << '\n';
+
+      indentation.increment ();
+      visit_items_as_lines (collection, line_trailing);
+      indentation.decrement ();
+
+      stream << indentation << right_brace << '\n';
+    }
+}
+
 void
 Dump::visit (Lifetime &)
 {}
