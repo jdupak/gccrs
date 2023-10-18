@@ -7,13 +7,6 @@ namespace BIR {
 constexpr auto indentation = "    ";
 
 uint32_t
-get_place_name (PlaceId place_id)
-{
-  rust_assert (place_id >= FIRST_VARIABLE_PLACE);
-  return place_id - FIRST_VARIABLE_PLACE;
-}
-
-uint32_t
 get_lifetime_name (Lifetime lifetime_id)
 {
   rust_assert (lifetime_id.id >= FIRST_NORMAL_LIFETIME_ID);
@@ -41,6 +34,28 @@ print_comma_separated (std::ostream &stream, const std::vector<T> &collection,
     {
       stream << ", ";
       printer (*it);
+    }
+}
+
+void
+renumber_places (const Function &func, std::vector<PlaceId> &place_map)
+{
+  // Renumbering places to avoid gaps in the place id space.
+  // This is needed to match MIR shape.
+  size_t next_out_id = 0;
+
+  for (size_t in_id = FIRST_VARIABLE_PLACE; in_id < func.place_db.size ();
+       ++in_id)
+    {
+      const Place &place = func.place_db[in_id];
+      if (place.kind == Place::VARIABLE || place.kind == Place::TEMPORARY)
+	{
+	  place_map[in_id] = next_out_id++;
+	}
+      else
+	{
+	  place_map[in_id] = INVALID_PLACE;
+	}
     }
 }
 
@@ -74,12 +89,16 @@ Dump::go (bool enable_simplify_cfg)
   // To avoid mutation of the BIR, we use indirection through bb_fold_map.
   std::iota (bb_fold_map.begin (), bb_fold_map.end (), 0);
 
+  std::iota (place_map.begin (), place_map.end (), 0);
+
   if (enable_simplify_cfg)
     simplify_cfg (func, bb_fold_map);
 
+  renumber_places (func, place_map);
+
   stream << "fn " << name << "(";
   print_comma_separated (stream, func.arguments, [this] (PlaceId place_id) {
-    stream << "_" << get_place_name (place_id) << ": "
+    stream << "_" << place_map[place_id] << ": "
 	   << get_tyty_name (place_db[place_id].tyty);
   });
   stream << ") -> " << get_tyty_name (place_db[RETURN_VALUE_PLACE].tyty)
@@ -93,7 +112,7 @@ Dump::go (bool enable_simplify_cfg)
 	  if (std::find (func.arguments.begin (), func.arguments.end (), id)
 	      != func.arguments.end ())
 	    continue;
-	  stream << indentation << "let _" << get_place_name (id) << ": "
+	  stream << indentation << "let _" << place_map[id] << ": "
 		 << get_tyty_name (place_db[id].tyty) << ";\n";
 	}
     }
@@ -128,7 +147,7 @@ Dump::visit (Node &node)
   switch (node.get_kind ())
     {
       case Node::ASSIGNMENT: {
-	stream << "_" << get_place_name (node.get_place ()) << " = ";
+	stream << "_" << place_map[node.get_place ()] << " = ";
 	node.get_expr ().accept_vis (*this);
 	break;
       }
@@ -172,7 +191,7 @@ Dump::visit_place (PlaceId place_id)
     {
     case Place::TEMPORARY:
     case Place::VARIABLE:
-      stream << "_" << get_place_name (place_id);
+      stream << "_" << place_map[place_id];
       break;
     case Place::DEREF:
       stream << "(";
