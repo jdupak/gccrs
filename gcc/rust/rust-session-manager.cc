@@ -46,6 +46,7 @@
 #include "rust-expand-visitor.h"
 #include "rust-unicode.h"
 #include "rust-attribute-values.h"
+#include "rust-borrow-checker.h"
 
 #include "input.h"
 #include "selftest.h"
@@ -658,6 +659,8 @@ Session::compile_crate (const char *filename)
     return;
 
   HIR::ConstChecker ().go (hir);
+
+  HIR::BorrowChecker ().go (hir);
 
   if (saw_errors ())
     return;

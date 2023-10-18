@@ -18,8 +18,7 @@
 
 #include "rust-borrow-checker.h"
 #include "rust-function-collector.h"
-#include "rust-bir.h"
-#include "rust-bir-visitor.h"
+#include "rust-bir-builder.h"
 
 namespace Rust {
 namespace HIR {
@@ -34,6 +33,9 @@ BorrowChecker::go (HIR::Crate &crate)
 
   for (auto func : collector.get_functions ())
     {
+      BIR::BuilderContext ctx;
+      BIR::Builder builder (ctx);
+      builder.build (*func);
     }
 
   for (auto closure : collector.get_closures ())
