@@ -38,6 +38,7 @@ class Dump : public Visitor
   std::vector<BasicBlockId> bb_fold_map;
 
   PlaceId node_place = INVALID_PLACE;
+  BasicBlockId node_bb = INVALID_BB;
 
 public:
   Dump (std::ostream &os, Function &func, const std::string &name)

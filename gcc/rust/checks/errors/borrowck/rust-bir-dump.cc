@@ -98,28 +98,25 @@ Dump::go (bool enable_simplify_cfg)
 	}
     }
 
-  for (BasicBlockId id = 0; id < func.basic_blocks.size (); ++id)
+  for (node_bb = 0; node_bb < func.basic_blocks.size (); ++node_bb)
     {
-      if (bb_fold_map[id] != id)
+      if (bb_fold_map[node_bb] != node_bb)
 	continue; // This BB was folded.
 
-      if (func.basic_blocks[id].statements.empty ()
-	  && func.basic_blocks[id].successors.empty ())
+      if (func.basic_blocks[node_bb].statements.empty ()
+	  && func.basic_blocks[node_bb].successors.empty ())
 	continue;
 
-      BasicBlock &bb = func.basic_blocks[id];
+      BasicBlock &bb = func.basic_blocks[node_bb];
       stream << "\n";
-      stream << indentation << "bb" << bb_fold_map[id] << ": {\n";
+      stream << indentation << "bb" << bb_fold_map[node_bb] << ": {\n";
       for (auto &stmt : bb.statements)
 	{
 	  stream << indentation << indentation;
 	  visit (stmt);
 	  stream << ";\n";
 	}
-      stream << indentation << "} -> [";
-      for (auto succ : bb.successors)
-	stream << "bb" << bb_fold_map[succ] << ", ";
-      stream << "]\n";
+      stream << indentation << "}\n";
     }
 
   stream << "}\n\n";
@@ -136,14 +133,22 @@ Dump::visit (Node &node)
 	break;
       }
     case Node::SWITCH:
-      stream << "switch ";
+      stream << "switchInt(";
       visit_move_place (node.get_place ());
+      stream << ") -> [";
+      print_comma_separated (stream,
+			     func.basic_blocks[bb_fold_map[node_bb]].successors,
+			     [this] (auto &dst) {
+			       stream << "bb" << bb_fold_map[dst];
+			     });
+      stream << "]";
       break;
     case Node::RETURN:
       stream << "return";
       break;
     case Node::GOTO:
-      stream << "goto";
+      stream << "goto -> bb"
+	     << func.basic_blocks[bb_fold_map[node_bb]].successors[0];
       break;
     case Node::STORAGE_DEAD:
       stream << "StorageDead(";
