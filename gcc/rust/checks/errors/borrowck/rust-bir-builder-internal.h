@@ -57,6 +57,8 @@ struct BuilderContext
 
     /** Returns a new anonymous lifetime. */
     Index get_anonymous () { return next_index++; }
+
+    Index size () const { return next_index; }
   };
 
   struct LoopAndLabelCtx

@@ -30,6 +30,8 @@ struct BasicBlock;
 class Statement;
 class AbstractExpr;
 
+using LoanId = uint32_t;
+
 /**
  * Top-level entity of the Borrow-checker IR (BIR).
  * It represents a single function (method, closure, etc.), which is the
@@ -40,6 +42,7 @@ struct Function
   PlaceDB place_db;
   std::vector<PlaceId> arguments;
   std::vector<BasicBlock> basic_blocks;
+  size_t num_lifetimes;
 };
 
 /** Single statement of BIR. */
@@ -137,6 +140,10 @@ public:
 
 public:
   std::vector<PlaceId> &get_values () { return values; }
+  [[nodiscard]] const std::vector<PlaceId> &get_values () const
+  {
+    return values;
+  }
 };
 
 template <unsigned ARITY>
@@ -161,12 +168,14 @@ public:
 class BorrowExpr : public VisitableImpl<AbstractExpr, BorrowExpr>
 {
   PlaceId place;
+  LoanId loan_id;
 
 public:
   explicit BorrowExpr (PlaceId place)
     : VisitableImpl<AbstractExpr, BorrowExpr> (ExprKind::BORROW), place (place)
   {}
   WARN_UNUSED_RESULT PlaceId get_place () const { return place; }
+  WARN_UNUSED_RESULT LoanId get_loan_id () const { return loan_id; }
 };
 
 /**
@@ -199,7 +208,10 @@ public:
   {}
 
 public:
-  const std::vector<PlaceId> &get_arguments () { return arguments; }
+  [[nodiscard]] const std::vector<PlaceId> &get_arguments () const
+  {
+    return arguments;
+  }
   WARN_UNUSED_RESULT PlaceId get_callable () const { return callable; }
 };
 

@@ -48,7 +48,8 @@ public:
     handle_body (*function.get_definition ());
 
     return Function{std::move (ctx.place_db), std::move (ctx.arguments),
-		    std::move (ctx.basic_blocks)};
+		    std::move (ctx.basic_blocks),
+		    ctx.lifetime_interner.size ()};
   };
 
 private:
