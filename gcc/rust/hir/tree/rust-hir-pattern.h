@@ -51,7 +51,7 @@ public:
   void accept_vis (HIRFullVisitor &vis) override;
   void accept_vis (HIRPatternVisitor &vis) override;
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -137,7 +137,7 @@ public:
   void accept_vis (HIRFullVisitor &vis) override;
   void accept_vis (HIRPatternVisitor &vis) override;
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -176,7 +176,7 @@ public:
   void accept_vis (HIRFullVisitor &vis) override;
   void accept_vis (HIRPatternVisitor &vis) override;
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -395,7 +395,7 @@ public:
 
   bool get_has_ellipsis_syntax () { return has_ellipsis_syntax; };
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -464,7 +464,7 @@ public:
   void accept_vis (HIRFullVisitor &vis) override;
   void accept_vis (HIRPatternVisitor &vis) override;
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -758,7 +758,7 @@ public:
   PathInExpression &get_path () { return path; }
   StructPatternElements &get_struct_pattern_elems () { return elems; }
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -794,7 +794,7 @@ public:
   // Unique pointer custom clone function
   std::unique_ptr<TupleStructItems> clone_tuple_struct_items () const
   {
-    return std::unique_ptr<TupleStructItems> (clone_tuple_struct_items_impl ());
+    return std::unique_ptr<TupleStructItems> (clone_tuple_items_impl ());
   }
 
   virtual std::string as_string () const = 0;
@@ -805,7 +805,7 @@ public:
 
 protected:
   // pure virtual clone implementation
-  virtual TupleStructItems *clone_tuple_struct_items_impl () const = 0;
+  virtual TupleStructItems *clone_tuple_items_impl () const = 0;
 };
 
 // Class for non-ranged tuple struct pattern patterns
@@ -857,7 +857,7 @@ public:
 protected:
   /* Use covariance to implement clone function as returning this object rather
    * than base */
-  TupleStructItemsNoRange *clone_tuple_struct_items_impl () const override
+  TupleStructItemsNoRange *clone_tuple_items_impl () const override
   {
     return new TupleStructItemsNoRange (*this);
   }
@@ -936,7 +936,7 @@ public:
 protected:
   /* Use covariance to implement clone function as returning this object rather
    * than base */
-  TupleStructItemsRange *clone_tuple_struct_items_impl () const override
+  TupleStructItemsRange *clone_tuple_items_impl () const override
   {
     return new TupleStructItemsRange (*this);
   }
@@ -991,7 +991,7 @@ public:
 
   std::unique_ptr<TupleStructItems> &get_items () { return items; }
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -1027,17 +1027,16 @@ public:
   // Unique pointer custom clone function
   std::unique_ptr<TuplePatternItems> clone_tuple_pattern_items () const
   {
-    return std::unique_ptr<TuplePatternItems> (
-      clone_tuple_pattern_items_impl ());
+    return std::unique_ptr<TuplePatternItems> (clone_tuple_items_impl ());
   }
 
   virtual std::string as_string () const = 0;
 
-  virtual TuplePatternItemType get_pattern_type () const = 0;
+  virtual TuplePatternItemType get_item_type () const = 0;
 
 protected:
   // pure virtual clone implementation
-  virtual TuplePatternItems *clone_tuple_pattern_items_impl () const = 0;
+  virtual TuplePatternItems *clone_tuple_items_impl () const = 0;
 };
 
 // Class representing TuplePattern patterns where there are multiple patterns
@@ -1078,7 +1077,7 @@ public:
 
   void accept_vis (HIRFullVisitor &vis) override;
 
-  TuplePatternItemType get_pattern_type () const override
+  TuplePatternItemType get_item_type () const override
   {
     return TuplePatternItemType::MULTIPLE;
   }
@@ -1092,7 +1091,7 @@ public:
 protected:
   /* Use covariance to implement clone function as returning this object rather
    * than base */
-  TuplePatternItemsMultiple *clone_tuple_pattern_items_impl () const override
+  TuplePatternItemsMultiple *clone_tuple_items_impl () const override
   {
     return new TuplePatternItemsMultiple (*this);
   }
@@ -1148,7 +1147,7 @@ public:
 
   void accept_vis (HIRFullVisitor &vis) override;
 
-  TuplePatternItemType get_pattern_type () const override
+  TuplePatternItemType get_item_type () const override
   {
     return TuplePatternItemType::RANGED;
   }
@@ -1174,7 +1173,7 @@ public:
 protected:
   /* Use covariance to implement clone function as returning this object rather
    * than base */
-  TuplePatternItemsRanged *clone_tuple_pattern_items_impl () const override
+  TuplePatternItemsRanged *clone_tuple_items_impl () const override
   {
     return new TuplePatternItemsRanged (*this);
   }
@@ -1219,7 +1218,7 @@ public:
   void accept_vis (HIRFullVisitor &vis) override;
   void accept_vis (HIRPatternVisitor &vis) override;
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -1294,7 +1293,7 @@ public:
   void accept_vis (HIRFullVisitor &vis) override;
   void accept_vis (HIRPatternVisitor &vis) override;
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }
@@ -1366,7 +1365,7 @@ public:
   void accept_vis (HIRFullVisitor &vis) override;
   void accept_vis (HIRPatternVisitor &vis) override;
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
     return mappings;
   }

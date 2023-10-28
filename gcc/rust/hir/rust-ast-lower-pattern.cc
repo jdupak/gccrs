@@ -35,8 +35,7 @@ ASTLoweringPattern::translate (AST::Pattern *pattern, bool is_let_top_level)
 
   resolver.mappings->insert_hir_pattern (resolver.translated);
   resolver.mappings->insert_location (
-    resolver.translated->get_pattern_mappings ().get_hirid (),
-    pattern->get_locus ());
+    resolver.translated->get_mappings ().get_hirid (), pattern->get_locus ());
 
   return resolver.translated;
 }
@@ -122,8 +121,23 @@ ASTLoweringPattern::visit (AST::StructPattern &pattern)
       switch (field->get_item_type ())
 	{
 	  case AST::StructPatternField::ItemType::TUPLE_PAT: {
-	    // TODO
-	    rust_unreachable ();
+	    AST::StructPatternFieldTuplePat &tuple
+	      = static_cast<AST::StructPatternFieldTuplePat &> (*field);
+
+	    auto crate_num = mappings->get_current_crate ();
+	    Analysis::NodeMapping mapping (crate_num, tuple.get_node_id (),
+					   mappings->get_next_hir_id (
+					     crate_num),
+					   UNKNOWN_LOCAL_DEFID);
+
+	    std::unique_ptr<HIR::Pattern> pat (ASTLoweringPattern::translate (
+	      tuple.get_index_pattern ().get ()));
+
+	    f = new HIR::StructPatternFieldTuplePat (mapping,
+						     tuple.get_index (),
+						     std::move (pat),
+						     tuple.get_outer_attrs (),
+						     tuple.get_locus ());
 	  }
 	  break;
 

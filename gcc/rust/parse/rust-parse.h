@@ -139,8 +139,10 @@ public:
 
   std::unique_ptr<AST::BlockExpr>
   parse_block_expr (AST::AttrVec outer_attrs = AST::AttrVec (),
+		    AST::LoopLabel label = AST::LoopLabel::error (),
 		    location_t pratt_parsed_loc = UNKNOWN_LOCATION);
 
+  bool is_macro_rules_def (const_TokenPtr t);
   std::unique_ptr<AST::Item> parse_item (bool called_from_statement);
   std::unique_ptr<AST::Pattern> parse_pattern ();
   std::unique_ptr<AST::Pattern> parse_pattern_no_alt ();
@@ -589,9 +591,9 @@ private:
   AST::MatchArm parse_match_arm ();
   std::vector<std::unique_ptr<AST::Pattern> >
   parse_match_arm_patterns (TokenId end_token_id);
-  std::unique_ptr<AST::BaseLoopExpr>
-  parse_labelled_loop_expr (const_TokenPtr tok,
-			    AST::AttrVec outer_attrs = AST::AttrVec ());
+  std::unique_ptr<AST::Expr> parse_labelled_loop_expr (const_TokenPtr tok,
+						       AST::AttrVec outer_attrs
+						       = AST::AttrVec ());
   AST::LoopLabel parse_loop_label (const_TokenPtr tok);
   std::unique_ptr<AST::AsyncBlockExpr>
   parse_async_block_expr (AST::AttrVec outer_attrs = AST::AttrVec ());

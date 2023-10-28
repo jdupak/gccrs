@@ -321,7 +321,7 @@ public:
 
   PathExprSegment &get_root_seg () { return segments.at (0); }
 
-  PathExprSegment get_final_segment () const { return segments.back (); }
+  const PathExprSegment &get_final_segment () const { return segments.back (); }
 
   PatternType get_pattern_type () const override final
   {
@@ -390,9 +390,9 @@ public:
 	   == 0;
   }
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
-    return get_mappings ();
+    return mappings;
   }
 
 protected:
@@ -864,9 +864,9 @@ public:
 
   location_t get_locus () { return locus; }
 
-  Analysis::NodeMapping get_pattern_mappings () const override final
+  const Analysis::NodeMapping &get_mappings () const override final
   {
-    return get_mappings ();
+    return mappings;
   }
 
 protected:

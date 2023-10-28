@@ -22,6 +22,7 @@
 /* DO NOT INCLUDE ANYWHERE - this is automatically included with rust-parse.h
  * This is also the reason why there are no include guards. */
 
+#include "rust-token.h"
 #define INCLUDE_ALGORITHM
 #include "rust-diagnostics.h"
 #include "rust-make-unique.h"
@@ -1070,6 +1071,18 @@ Parser<ManagedTokenSource>::parse_token_tree ()
     }
 }
 
+template <typename ManagedTokenSource>
+bool
+Parser<ManagedTokenSource>::is_macro_rules_def (const_TokenPtr t)
+{
+  auto macro_name = lexer.peek_token (2)->get_id ();
+
+  bool allowed_macro_name = (macro_name == IDENTIFIER || macro_name == TRY);
+
+  return t->get_str () == "macro_rules"
+	 && lexer.peek_token (1)->get_id () == EXCLAM && allowed_macro_name;
+}
+
 // Parses a single item
 template <typename ManagedTokenSource>
 std::unique_ptr<AST::Item>
@@ -1133,14 +1146,15 @@ Parser<ManagedTokenSource>::parse_item (bool called_from_statement)
 	  return parse_vis_item (std::move (outer_attrs));
 	  // or should this go straight to parsing union?
 	}
-      else if (t->get_str () == "default")
+      else if (t->get_str () == "default"
+	       && lexer.peek_token (1)->get_id () != EXCLAM)
 	{
 	  add_error (Error (t->get_locus (),
 			    "%qs is only allowed on items within %qs blocks",
 			    "default", "impl"));
 	  return nullptr;
 	}
-      else if (t->get_str () == "macro_rules")
+      else if (is_macro_rules_def (t))
 	{
 	  // macro_rules! macro item
 	  return parse_macro_rules_def (std::move (outer_attrs));
@@ -2296,8 +2310,11 @@ Parser<ManagedTokenSource>::parse_visibility ()
   auto vis_loc = lexer.peek_token ()->get_locus ();
   lexer.skip_token ();
 
-  // create simple pub visibility if no parentheses
-  if (lexer.peek_token ()->get_id () != LEFT_PAREN)
+  // create simple pub visibility if
+  // - found no parentheses
+  // - found unit type `()`
+  if (lexer.peek_token ()->get_id () != LEFT_PAREN
+      || lexer.peek_token (1)->get_id () == RIGHT_PAREN)
     {
       return AST::Visibility::create_public (vis_loc);
       // or whatever
@@ -3093,7 +3110,7 @@ Parser<ManagedTokenSource>::parse_generic_param (EndTokenPred is_end_token)
       // FIXME: Can we clean this last call with a method call?
       rust_error_at (token->get_locus (),
 		     "unexpected token when parsing generic parameters: %qs",
-		     token->get_str ().c_str ());
+		     token->as_string ().c_str ());
       return nullptr;
     }
 
@@ -3886,6 +3903,7 @@ Parser<ManagedTokenSource>::parse_type_param_bound ()
     case SELF_ALIAS:
     case CRATE:
     case DOLLAR_SIGN:
+    case SCOPE_RESOLUTION:
       return parse_trait_bound ();
     default:
       // don't error - assume this is fine TODO
@@ -4764,6 +4782,16 @@ Parser<ManagedTokenSource>::parse_const_item (AST::Visibility vis,
 
   // parse constant type (required)
   std::unique_ptr<AST::Type> type = parse_type ();
+
+  // A const with no given expression value
+  if (lexer.peek_token ()->get_id () == SEMICOLON)
+    {
+      lexer.skip_token ();
+      return std::unique_ptr<AST::ConstantItem> (
+	new AST::ConstantItem (std::move (ident), std::move (vis),
+			       std::move (type), std::move (outer_attrs),
+			       locus));
+    }
 
   if (!skip_token (EQUAL))
     {
@@ -6227,8 +6255,7 @@ Parser<ManagedTokenSource>::parse_stmt (ParseRestrictions restrictions)
 	  return parse_vis_item (std::move (outer_attrs));
 	  // or should this go straight to parsing union?
 	}
-      else if (t->get_str () == "macro_rules"
-	       && lexer.peek_token (1)->get_id () == EXCLAM)
+      else if (is_macro_rules_def (t))
 	{
 	  // macro_rules! macro item
 	  return parse_macro_rules_def (std::move (outer_attrs));
@@ -6804,11 +6831,13 @@ Parser<ManagedTokenSource>::parse_path_expr_segment ()
   /* use lookahead to determine if they actually exist (don't want to
    * accidently parse over next ident segment) */
   if (lexer.peek_token ()->get_id () == SCOPE_RESOLUTION
-      && lexer.peek_token (1)->get_id () == LEFT_ANGLE)
+      && (lexer.peek_token (1)->get_id () == LEFT_ANGLE
+	  || lexer.peek_token (1)->get_id () == LEFT_SHIFT))
     {
       // skip scope resolution
       lexer.skip_token ();
 
+      // Let parse_path_generic_args split "<<" tokens
       AST::GenericArgs generic_args = parse_path_generic_args ();
 
       return AST::PathExprSegment (std::move (ident), locus,
@@ -7340,6 +7369,7 @@ Parser<ManagedTokenSource>::parse_expr_stmt (AST::AttrVec outer_attrs,
 template <typename ManagedTokenSource>
 std::unique_ptr<AST::BlockExpr>
 Parser<ManagedTokenSource>::parse_block_expr (AST::AttrVec outer_attrs,
+					      AST::LoopLabel label,
 					      location_t pratt_parsed_loc)
 {
   location_t locus = pratt_parsed_loc;
@@ -7406,8 +7436,8 @@ Parser<ManagedTokenSource>::parse_block_expr (AST::AttrVec outer_attrs,
 
   return std::unique_ptr<AST::BlockExpr> (
     new AST::BlockExpr (std::move (stmts), std::move (expr),
-			std::move (inner_attrs), std::move (outer_attrs), locus,
-			end_locus));
+			std::move (inner_attrs), std::move (outer_attrs),
+			std::move (label), locus, end_locus));
 }
 
 /* Parses a "grouped" expression (expression in parentheses), used to control
@@ -8348,7 +8378,7 @@ Parser<ManagedTokenSource>::parse_for_loop_expr (AST::AttrVec outer_attrs,
 
 // Parses a loop expression with label (any kind of loop - disambiguates).
 template <typename ManagedTokenSource>
-std::unique_ptr<AST::BaseLoopExpr>
+std::unique_ptr<AST::Expr>
 Parser<ManagedTokenSource>::parse_labelled_loop_expr (const_TokenPtr tok,
 						      AST::AttrVec outer_attrs)
 {
@@ -8400,6 +8430,8 @@ Parser<ManagedTokenSource>::parse_labelled_loop_expr (const_TokenPtr tok,
 	  return parse_while_loop_expr (std::move (outer_attrs),
 					std::move (label));
 	}
+    case LEFT_CURLY:
+      return parse_block_expr (std::move (outer_attrs), std::move (label));
     default:
       // error
       add_error (Error (t->get_locus (),
@@ -12082,7 +12114,7 @@ Parser<ManagedTokenSource>::parse_expr (int right_binding_power,
     {
       TokenId id = current_token->get_id ();
       if (id == SEMICOLON || id == RIGHT_PAREN || id == RIGHT_CURLY
-	  || id == RIGHT_SQUARE)
+	  || id == RIGHT_SQUARE || id == COMMA || id == LEFT_CURLY)
 	return nullptr;
     }
 
@@ -12518,7 +12550,8 @@ Parser<ManagedTokenSource>::null_denotation_not_path (
       return parse_continue_expr (std::move (outer_attrs), tok->get_locus ());
     case LEFT_CURLY:
       // ok - this is an expression with block for once.
-      return parse_block_expr (std::move (outer_attrs), tok->get_locus ());
+      return parse_block_expr (std::move (outer_attrs),
+			       AST::LoopLabel::error (), tok->get_locus ());
     case IF:
       // if or if let, so more lookahead to find out
       if (lexer.peek_token ()->get_id () == LET)
@@ -14445,11 +14478,16 @@ Parser<ManagedTokenSource>::parse_closure_expr_pratt (const_TokenPtr tok,
 
 	    if (lexer.peek_token ()->get_id () != COMMA)
 	      {
+		if (lexer.peek_token ()->get_id () == OR)
+		  lexer.split_current_token (PIPE, PIPE);
 		// not an error but means param list is done
 		break;
 	      }
 	    // skip comma
 	    lexer.skip_token ();
+
+	    if (lexer.peek_token ()->get_id () == OR)
+	      lexer.split_current_token (PIPE, PIPE);
 
 	    t = lexer.peek_token ();
 	  }

@@ -184,8 +184,8 @@ void
 CompileExpr::visit (HIR::CompoundAssignmentExpr &expr)
 {
   auto op = expr.get_expr_type ();
-  auto lhs = CompileExpr::Compile (expr.get_left_expr ().get (), ctx);
-  auto rhs = CompileExpr::Compile (expr.get_right_expr ().get (), ctx);
+  auto lhs = CompileExpr::Compile (expr.get_lhs ().get (), ctx);
+  auto rhs = CompileExpr::Compile (expr.get_rhs ().get (), ctx);
 
   // this might be an operator overload situation lets check
   TyTy::FnType *fntype;
@@ -198,8 +198,8 @@ CompileExpr::visit (HIR::CompoundAssignmentExpr &expr)
 	  expr.get_expr_type ());
       auto compound_assignment
 	= resolve_operator_overload (lang_item_type, expr, lhs, rhs,
-				     expr.get_left_expr ().get (),
-				     expr.get_right_expr ().get ());
+				     expr.get_lhs ().get (),
+				     expr.get_rhs ().get ());
       ctx->add_statement (compound_assignment);
 
       return;
@@ -352,6 +352,12 @@ CompileExpr::visit (HIR::IfExprConseqElse &expr)
 void
 CompileExpr::visit (HIR::BlockExpr &expr)
 {
+  if (expr.has_label ())
+    {
+      rust_error_at (expr.get_locus (), "labeled blocks are not supported");
+      return;
+    }
+
   TyTy::BaseType *block_tyty = nullptr;
   if (!ctx->get_tyctx ()->lookup_type (expr.get_mappings ().get_hirid (),
 				       &block_tyty))
@@ -1038,7 +1044,7 @@ sort_tuple_patterns (HIR::MatchExpr &expr)
 
       auto items
 	= HIR::TuplePattern (ref).get_items ()->clone_tuple_pattern_items ();
-      if (items->get_pattern_type ()
+      if (items->get_item_type ()
 	  == HIR::TuplePatternItems::TuplePatternItemType::MULTIPLE)
 	{
 	  auto items_ref
@@ -1066,7 +1072,7 @@ sort_tuple_patterns (HIR::MatchExpr &expr)
 
 	      // Construct a TuplePattern from the rest of the patterns
 	      result_pattern = std::unique_ptr<HIR::Pattern> (
-		new HIR::TuplePattern (ref.get_pattern_mappings (),
+		new HIR::TuplePattern (ref.get_mappings (),
 				       std::move (new_items),
 				       ref.get_locus ()));
 	    }
@@ -1635,17 +1641,13 @@ CompileExpr::visit (HIR::CallExpr &expr)
     return;
 
   bool is_variadic = false;
-  if (tyty->get_kind () == TyTy::TypeKind::FNDEF)
-    {
-      const TyTy::FnType *fn = static_cast<const TyTy::FnType *> (tyty);
-      is_variadic = fn->is_variadic ();
-    }
-
   size_t required_num_args = expr.get_arguments ().size ();
+
   if (tyty->get_kind () == TyTy::TypeKind::FNDEF)
     {
       const TyTy::FnType *fn = static_cast<const TyTy::FnType *> (tyty);
       required_num_args = fn->num_params ();
+      is_variadic = fn->is_variadic ();
     }
   else if (tyty->get_kind () == TyTy::TypeKind::FNPTR)
     {
