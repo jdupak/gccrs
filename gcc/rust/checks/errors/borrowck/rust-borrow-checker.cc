@@ -76,6 +76,9 @@ BorrowChecker::go (HIR::Crate &crate)
 
   for (auto func : collector.get_functions ())
     {
+      printf ("\nChecking function %s\n",
+	      func->get_function_name ().as_string ().c_str ());
+
       BIR::BuilderContext ctx;
       BIR::Builder builder (ctx);
       auto bir = builder.build (*func);
@@ -89,7 +92,7 @@ BorrowChecker::go (HIR::Crate &crate)
 			     func->get_function_name ().as_string ());
 	}
 
-      Polonius::Facts facts; // Dummy facts for now.
+      auto facts = BIR::FactCollector (bir).go ();
       Polonius::polonius_run (facts.freeze (), true);
     }
 
