@@ -144,8 +144,7 @@ TypeCheckExpr::visit (HIR::QualifiedPathInExpression &expr)
       std::vector<TyTy::Region> regions;
 
       infered = SubstMapper::Resolve (infered, expr.get_locus (),
-				      &item_seg.get_generic_args (),
-				      context->regions_from_generic_args (
+				      &item_seg.get_generic_args (), context->regions_from_generic_args (
 					item_seg.get_generic_args ()));
     }
 
@@ -302,8 +301,7 @@ TypeCheckExpr::resolve_root_path (HIR::PathInExpression &expr, size_t *offset,
       if (seg.has_generic_args ())
 	{
 	  lookup = SubstMapper::Resolve (lookup, expr.get_locus (),
-					 &seg.get_generic_args (),
-					 context->regions_from_generic_args (
+					 &seg.get_generic_args (), context->regions_from_generic_args (
 					   seg.get_generic_args ()));
 	  if (lookup->get_kind () == TyTy::TypeKind::ERROR)
 	    return new TyTy::ErrorType (expr.get_mappings ().get_hirid ());
