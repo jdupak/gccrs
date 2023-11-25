@@ -151,6 +151,8 @@ TraitItemReference::get_type_from_constant (
 TyTy::BaseType *
 TraitItemReference::get_type_from_fn (/*const*/ HIR::TraitItemFunc &fn) const
 {
+  auto binder_pin = context->push_clean_lifetime_resolver ();
+
   std::vector<TyTy::SubstitutionParamMapping> substitutions
     = inherited_substitutions;
 
@@ -234,15 +236,27 @@ TraitItemReference::get_type_from_fn (/*const*/ HIR::TraitItemFunc &fn) const
 	      break;
 
 	    case HIR::SelfParam::IMM_REF:
-	      self_type = new TyTy::ReferenceType (
-		self_param.get_mappings ().get_hirid (),
-		TyTy::TyVar (self->get_ref ()), Mutability::Imm);
-	      break;
+	      case HIR::SelfParam::MUT_REF: {
+		auto mutability
+		  = self_param.get_self_kind () == HIR::SelfParam::IMM_REF
+		      ? Mutability::Imm
+		      : Mutability::Mut;
+		rust_assert (self_param.has_lifetime ());
 
-	    case HIR::SelfParam::MUT_REF:
-	      self_type = new TyTy::ReferenceType (
-		self_param.get_mappings ().get_hirid (),
-		TyTy::TyVar (self->get_ref ()), Mutability::Mut);
+		auto maybe_region = context->lookup_and_resolve_lifetime (
+		  self_param.get_lifetime ());
+
+		if (!maybe_region.has_value ())
+		  {
+		    rust_error_at (self_param.get_locus (),
+				   "failed to resolve lifetime");
+		    return get_error ();
+		  }
+		self_type = new TyTy::ReferenceType (
+		  self_param.get_mappings ().get_hirid (),
+		  TyTy::TyVar (self->get_ref ()), mutability,
+		  maybe_region.value ());
+	      }
 	      break;
 
 	    default:
@@ -274,15 +288,14 @@ TraitItemReference::get_type_from_fn (/*const*/ HIR::TraitItemFunc &fn) const
   rust_assert (ok);
 
   RustIdent ident{*canonical_path, fn.get_locus ()};
-  auto resolved
-    = new TyTy::FnType (fn.get_mappings ().get_hirid (),
-			fn.get_mappings ().get_defid (),
-			function.get_function_name ().as_string (), ident,
-			function.is_method ()
-			  ? TyTy::FnType::FNTYPE_IS_METHOD_FLAG
+  auto resolved = new TyTy::FnType (
+    fn.get_mappings ().get_hirid (), fn.get_mappings ().get_defid (),
+    function.get_function_name ().as_string (), ident,
+    function.is_method () ? TyTy::FnType::FNTYPE_IS_METHOD_FLAG
 			  : TyTy::FnType::FNTYPE_DEFAULT_FLAGS,
-			ABI::RUST, std::move (params), ret_type, substitutions);
-
+    ABI::RUST, std::move (params), ret_type, substitutions,
+    TyTy::SubstitutionArgumentMappings::empty (
+      context->get_lifetime_resolver ().get_num_bound_regions ()));
   context->insert_type (fn.get_mappings (), resolved);
   return resolved;
 }

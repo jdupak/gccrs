@@ -26,6 +26,14 @@
 namespace Rust {
 namespace Resolver {
 
+using LifetimeParamIdx = size_t;
+
+using LifetimeParamIdxMap = std::vector<LifetimeParamIdx>;
+
+class BoundLifetimeResolver
+{
+};
+
 class TraitReference;
 class TypeCheckBase
 {
@@ -55,7 +63,7 @@ protected:
 						 location_t locus);
 
   void resolve_generic_params (
-    const std::vector<std::unique_ptr<HIR::GenericParam> > &generic_params,
+    const std::vector<std::unique_ptr<HIR::GenericParam>> &generic_params,
     std::vector<TyTy::SubstitutionParamMapping> &substitutions);
 
   TyTy::TypeBoundPredicate

@@ -25,6 +25,15 @@
 namespace Rust {
 namespace Resolver {
 
+static TyTy::RegionParamList
+regions_from_nullable_args (TyTy::SubstitutionArgumentMappings *args)
+{
+  if (args == nullptr)
+    return TyTy::RegionParamList (0);
+  else
+    return args->get_regions ();
+}
+
 class ResolveTraitItemToRef : public TypeCheckBase,
 			      private HIR::HIRTraitItemVisitor
 {

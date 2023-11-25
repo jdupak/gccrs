@@ -622,7 +622,8 @@ UnifyRules::expect_reference (TyTy::ReferenceType *ltype, TyTy::BaseType *rtype)
 
 	return new TyTy::ReferenceType (ltype->get_ref (), ltype->get_ty_ref (),
 					TyTy::TyVar (base_resolved->get_ref ()),
-					ltype->mutability ());
+					ltype->mutability (),
+					TyTy::Region::make_anonymous ());
       }
       break;
 

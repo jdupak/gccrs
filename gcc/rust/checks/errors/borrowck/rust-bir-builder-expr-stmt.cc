@@ -609,7 +609,7 @@ ExprStmtBuilder::visit (HIR::QualifiedPathInExpression &expr)
 {
   // Note: Type is only stored for the expr, not the segment.
   PlaceId result
-    = resolve_variable_or_fn (expr.get_final_segment (), lookup_type (expr));
+    = resolve_variable_or_fn (expr, lookup_type (expr));
   return_place (result);
 }
 

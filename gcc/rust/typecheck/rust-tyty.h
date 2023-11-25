@@ -26,6 +26,9 @@
 #include "rust-tyty-bounds.h"
 #include "rust-tyty-util.h"
 #include "rust-tyty-subst.h"
+#include "rust-tyty-region.h"
+
+#include <limits>
 
 namespace Rust {
 
@@ -812,10 +815,10 @@ public:
 	  uint8_t flags, ABI abi,
 	  std::vector<std::pair<HIR::Pattern *, BaseType *>> params,
 	  BaseType *type, std::vector<SubstitutionParamMapping> subst_refs,
+	  SubstitutionArgumentMappings substitution_argument_mappings,
 	  std::set<HirId> refs = std::set<HirId> ())
     : CallableTypeInterface (ref, ref, TypeKind::FNDEF, ident, refs),
-      SubstitutionRef (std::move (subst_refs),
-		       SubstitutionArgumentMappings::error ()),
+      SubstitutionRef (std::move (subst_refs), substitution_argument_mappings),
       params (std::move (params)), type (type), flags (flags),
       identifier (identifier), id (id), abi (abi)
   {
@@ -827,10 +830,10 @@ public:
 	  RustIdent ident, uint8_t flags, ABI abi,
 	  std::vector<std::pair<HIR::Pattern *, BaseType *>> params,
 	  BaseType *type, std::vector<SubstitutionParamMapping> subst_refs,
+	  SubstitutionArgumentMappings substitution_argument_mappings,
 	  std::set<HirId> refs = std::set<HirId> ())
     : CallableTypeInterface (ref, ty_ref, TypeKind::FNDEF, ident, refs),
-      SubstitutionRef (std::move (subst_refs),
-		       SubstitutionArgumentMappings::error ()),
+      SubstitutionRef (std::move (subst_refs), substitution_argument_mappings),
       params (params), type (type), flags (flags), identifier (identifier),
       id (id), abi (abi)
   {
@@ -1022,7 +1025,7 @@ public:
 	       = std::vector<TypeBoundPredicate> ())
     : CallableTypeInterface (ref, ty_ref, TypeKind::CLOSURE, ident, refs),
       SubstitutionRef (std::move (subst_refs),
-		       SubstitutionArgumentMappings::error ()),
+		       SubstitutionArgumentMappings::error ()), // TODO
       parameters (parameters), result_type (std::move (result_type)), id (id),
       captures (captures)
   {
@@ -1410,12 +1413,12 @@ public:
 class ReferenceType : public BaseType
 {
 public:
-  static constexpr auto KIND = TypeKind::REF;
+  static constexpr auto KIND = REF;
 
-  ReferenceType (HirId ref, TyVar base, Mutability mut,
+  ReferenceType (HirId ref, TyVar base, Mutability mut, Region region,
 		 std::set<HirId> refs = std::set<HirId> ());
   ReferenceType (HirId ref, HirId ty_ref, TyVar base, Mutability mut,
-		 std::set<HirId> refs = std::set<HirId> ());
+		 Region region, std::set<HirId> refs = std::set<HirId> ());
 
   BaseType *get_base () const;
   const TyVar &get_var_element_type () const;
@@ -1438,6 +1441,9 @@ public:
   Mutability mutability () const;
   bool is_mutable () const;
 
+  WARN_UNUSED_RESULT Region get_region () const;
+  void set_region (Region region);
+
   bool is_dyn_object () const;
   bool is_dyn_slice_type (const TyTy::SliceType **slice = nullptr) const;
   bool is_dyn_str_type (const TyTy::StrType **str = nullptr) const;
@@ -1446,6 +1452,7 @@ public:
 private:
   TyVar base;
   Mutability mut;
+  Region region;
 };
 
 class PointerType : public BaseType

@@ -403,7 +403,8 @@ TypeCheckPattern::visit (HIR::ReferencePattern &pattern)
   infered = new TyTy::ReferenceType (pattern.get_mappings ().get_hirid (),
 				     TyTy::TyVar (infered_base->get_ref ()),
 				     pattern.is_mut () ? Mutability::Mut
-						       : Mutability::Imm);
+						       : Mutability::Imm,
+				     TyTy::Region::make_anonymous ());
 }
 
 void
@@ -539,7 +540,8 @@ ClosureParamInfer::visit (HIR::ReferencePattern &pattern)
 
   HirId id = pattern.get_mappings ().get_hirid ();
   infered = new TyTy::ReferenceType (id, TyTy::TyVar (element->get_ref ()),
-				     pattern.get_mutability ());
+				     pattern.get_mutability (),
+				     TyTy::Region::make_anonymous ());
 }
 
 void

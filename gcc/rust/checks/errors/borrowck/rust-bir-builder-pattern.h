@@ -70,10 +70,11 @@ public:
     if (is_ref)
       {
 	translated = declare_variable (
-	  node, new TyTy::ReferenceType (node.get_hirid (),
-					 TyTy::TyVar (node.get_hirid ()),
-					 (is_mut) ? Mutability::Mut
-						  : Mutability::Imm));
+	  node,
+	  new TyTy::ReferenceType (node.get_hirid (),
+				   TyTy::TyVar (node.get_hirid ()),
+				   (is_mut) ? Mutability::Mut : Mutability::Imm,
+				   TyTy::Region::make_anonymous ()));
 	push_assignment (translated, new BorrowExpr (init));
       }
     else

@@ -367,7 +367,8 @@ protected: // Implicit conversions.
 	push_tmp_assignment (
 	  new BorrowExpr (translated),
 	  new TyTy::ReferenceType (ty->get_ref (), TyTy::TyVar (ty->get_ref ()),
-				   Mutability::Imm));
+				   Mutability::Imm,
+				   TyTy::Region::make_anonymous ()));
       }
   }
 };

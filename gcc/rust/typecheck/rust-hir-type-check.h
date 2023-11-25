@@ -23,6 +23,7 @@
 #include "rust-tyty.h"
 #include "rust-hir-trait-reference.h"
 #include "rust-autoderef.h"
+#include "rust-tyty-region.h"
 
 #include <stack>
 
@@ -207,7 +208,13 @@ public:
   bool lookup_lifetime (const HIR::Lifetime &lifetime,
 			LifetimePlaceholder *) const;
 
+  tl::optional<TyTy::Region>
+  lookup_and_resolve_lifetime (const HIR::Lifetime &lifetime) const;
+
   void intern_and_insert_lifetime (const HIR::Lifetime &lifetime);
+
+  std::vector<TyTy::Region>
+  regions_from_generic_args (const HIR::GenericArgs &args) const;
 
 private:
   TypeCheckContext ();
@@ -250,6 +257,19 @@ private:
 
   class LifetimeResolver
   {
+    /**
+     * The level of nested scopes, where the lifetime was declared.
+     *
+     * Index 0 is used for `impl` blocks and is skipped if not explicitly
+     * requested.
+     * Index 1 for the top-level of declarations of items.
+     * Index >1 is used for late-bound lifetimes.
+     */
+    using ScopeIndex = size_t;
+
+    static constexpr ScopeIndex IMPL_SCOPE = 0;
+    static constexpr ScopeIndex ITEM_SCOPE = 1;
+
     struct LifetimeBinderRef
     {
       uint32_t scope;
@@ -260,12 +280,46 @@ private:
     std::vector<std::pair<LifetimePlaceholder, LifetimeBinderRef>>
       lifetime_lookup;
 
+    bool is_body = false;
+
     WARN_UNUSED_RESULT uint32_t get_current_scope () const
     {
       return binder_size_stack.size () - 1;
     }
 
   public:
+    tl::optional<TyTy::Region>
+    resolve (const LifetimePlaceholder &placeholder) const
+    {
+      if (placeholder.is_static ())
+	return TyTy::Region::make_static ();
+
+      if (placeholder == LifetimePlaceholder::anonymous_lifetime ())
+	return TyTy::Region::make_anonymous ();
+
+      for (auto it = lifetime_lookup.rbegin (); it != lifetime_lookup.rend ();
+	   ++it)
+	{
+	  if (it->first == placeholder)
+	    {
+	      if (it->second.scope <= ITEM_SCOPE)
+		{
+		  return (is_body)
+			   ? TyTy::Region::make_named (it->second.index)
+			   : TyTy::Region::make_early_bound (it->second.index);
+		}
+	      else
+		{
+		  return TyTy::Region::make_late_bound (get_current_scope ()
+							  - it->second.scope,
+							it->second.index);
+		}
+	    }
+	}
+
+      return tl::nullopt;
+    }
+
     void insert_mapping (LifetimePlaceholder placeholder)
     {
       lifetime_lookup.push_back (
@@ -274,6 +328,8 @@ private:
 
     void push_binder () { binder_size_stack.push_back (0); }
     void pop_binder () { binder_size_stack.pop_back (); }
+
+    void switch_to_fn_body () { this->is_body = true; }
 
     size_t get_num_bound_regions () const { return binder_size_stack.back (); }
   };
@@ -303,8 +359,9 @@ public:
   public:
     enum ScopeKind
     {
+      IMPL_BLOCK_RESOLVER,
       RESOLVER,
-      BONDER,
+      BINDER,
     };
 
   private:
@@ -315,10 +372,18 @@ public:
     LifetimeResolverGuard (TypeCheckContext &ctx, ScopeKind kind)
       : ctx (ctx), kind (kind)
     {
-      if (kind == RESOLVER)
+      if (kind == IMPL_BLOCK_RESOLVER)
 	{
 	  ctx.lifetime_resolver_stack.push (LifetimeResolver ());
 	}
+
+      if (kind == RESOLVER)
+	{
+	  ctx.lifetime_resolver_stack.push (LifetimeResolver ());
+	  // Skip the `impl` block scope.
+	  ctx.lifetime_resolver_stack.top ().push_binder ();
+	}
+
       rust_assert (!ctx.lifetime_resolver_stack.empty ());
       ctx.lifetime_resolver_stack.top ().push_binder ();
     }
@@ -336,12 +401,21 @@ public:
 
   WARN_UNUSED_RESULT LifetimeResolverGuard push_lifetime_binder ()
   {
-    return LifetimeResolverGuard (*this, LifetimeResolverGuard::BONDER);
+    return LifetimeResolverGuard (*this, LifetimeResolverGuard::BINDER);
   }
 
-  WARN_UNUSED_RESULT LifetimeResolverGuard push_clean_lifetime_resolver ()
+  WARN_UNUSED_RESULT LifetimeResolverGuard
+  push_clean_lifetime_resolver (bool is_impl_block = false)
   {
-    return LifetimeResolverGuard (*this, LifetimeResolverGuard::RESOLVER);
+    return LifetimeResolverGuard (*this,
+				  is_impl_block
+				    ? LifetimeResolverGuard::IMPL_BLOCK_RESOLVER
+				    : LifetimeResolverGuard::RESOLVER);
+  }
+
+  void switch_to_fn_body ()
+  {
+    this->lifetime_resolver_stack.top ().switch_to_fn_body ();
   }
 };
 
