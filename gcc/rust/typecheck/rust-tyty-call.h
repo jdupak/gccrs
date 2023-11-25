@@ -40,6 +40,8 @@ public:
     return checker.resolved;
   }
 
+  using TyVisitor::visit;
+
   void visit (InferType &) override { rust_unreachable (); }
   void visit (TupleType &) override { rust_unreachable (); }
   void visit (ArrayType &) override { rust_unreachable (); }

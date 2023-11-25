@@ -70,6 +70,7 @@ enum TypeKind
   PROJECTION,
   DYNAMIC,
   CLOSURE,
+  BINDER,
   // there are more to add...
   ERROR
 };
@@ -399,6 +400,47 @@ private:
   bool is_trait_self;
   std::string symbol;
   HIR::GenericParam &param;
+};
+
+/**
+ * Binder for late-bound lifetimes.
+ *
+ * Bound lifetimes are represented using the late-bound variant within `Region`
+ * using 'Debruijn index'. Late-bound lifetimes are only ever subsituted for
+ * free lifetimes (not bound ones) and therefore it si sufficient to keep count
+ * of them. Any subtype relation will have to compare the types at structural
+ * level anyway.
+ *
+ * Example:
+ * `for<'a> fn('a i32) -> &'a i32`
+ *  ^^^^^^^ This is a binder.
+ *
+ *  `type<'a> = fn('a i32) -> &'a i32`
+ *  This case is desuggared into the previous one.
+ */
+class Binder : public BaseType
+{
+public:
+  static constexpr auto KIND = TypeKind::BINDER;
+
+  BaseType *bound_ty;
+  size_t num_bound_lifetimes = 0;
+
+public:
+  Binder (BaseType *bound_ty, size_t num_bound_lifetime)
+    : BaseType (bound_ty->get_ref (), bound_ty->get_ty_ref (), BINDER,
+		bound_ty->get_ident ()),
+      bound_ty (bound_ty), num_bound_lifetimes (num_bound_lifetime)
+  {}
+
+  BaseType *get_bound_ty () const { return bound_ty; }
+
+  void accept_vis (TyVisitor &vis) override;
+  void accept_vis (TyConstVisitor &vis) const override;
+  std::string as_string () const override;
+  std::string get_name () const override;
+  bool can_eq (const BaseType *other, bool emit_errors) const override;
+  BaseType *clone () const override;
 };
 
 class StructFieldType

@@ -111,6 +111,9 @@ TypeKindFormat::to_string (TypeKind kind)
 
     case TypeKind::ERROR:
       return "ERROR";
+
+    case TypeKind::BINDER:
+      return "Binder";
     }
   rust_unreachable ();
 }
@@ -236,6 +239,8 @@ BaseType::is_unit () const
 
 	return true;
       }
+    case BINDER:
+      return x->as<const Binder> ()->get_bound_ty ()->is_unit ();
     }
   return false;
 }
@@ -810,6 +815,10 @@ BaseType::has_substitutions_defined () const
 	return ref.has_substitutions ();
       }
       break;
+    case BINDER:
+      return x->as<const Binder> ()
+	->get_bound_ty ()
+	->has_substitutions_defined ();
     }
 
   return false;
@@ -871,6 +880,10 @@ BaseType::needs_generic_substitutions () const
 	return ref.needs_substitution ();
       }
       break;
+    case BINDER:
+      return x->as<const Binder> ()
+	->get_bound_ty ()
+	->needs_generic_substitutions ();
     }
 
   return false;
@@ -1235,6 +1248,37 @@ ErrorType::clone () const
 }
 
 // Struct Field type
+
+void
+Binder::accept_vis (TyVisitor &vis)
+{
+  vis.visit (*this);
+}
+void
+Binder::accept_vis (TyConstVisitor &vis) const
+{
+  vis.visit (*this);
+}
+std::string
+Binder::as_string () const
+{
+  return "for<> " + bound_ty->as_string ();
+}
+std::string
+Binder::get_name () const
+{
+  return as_string ();
+}
+bool
+Binder::can_eq (const BaseType *other, bool emit_errors) const
+{
+  return bound_ty->can_eq (other, emit_errors);
+}
+BaseType *
+Binder::clone () const
+{
+  return new Binder (bound_ty->clone (), num_bound_lifetimes);
+}
 
 StructFieldType::StructFieldType (HirId ref, std::string name, BaseType *ty,
 				  location_t locus)

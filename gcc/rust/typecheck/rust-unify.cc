@@ -314,6 +314,8 @@ UnifyRules::go ()
 
     case TyTy::ERROR:
       return new TyTy::ErrorType (0);
+    case TyTy::BINDER:
+    	rust_sorry_at (UNKNOWN_LOCATION, ""); // TODO
     }
 
   return new TyTy::ErrorType (0);
@@ -400,7 +402,8 @@ UnifyRules::expect_inference_variable (TyTy::InferType *ltype,
     case TyTy::PLACEHOLDER:
     case TyTy::PROJECTION:
     case TyTy::DYNAMIC:
-      case TyTy::CLOSURE: {
+    case TyTy::CLOSURE:
+      case TyTy::BINDER: {
 	bool is_valid = (ltype->get_infer_kind ()
 			 == TyTy::InferType::InferTypeKind::GENERAL);
 	if (is_valid)
@@ -529,6 +532,7 @@ UnifyRules::expect_adt (TyTy::ADTType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -573,6 +577,7 @@ UnifyRules::expect_str (TyTy::StrType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -643,6 +648,7 @@ UnifyRules::expect_reference (TyTy::ReferenceType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -713,6 +719,7 @@ UnifyRules::expect_pointer (TyTy::PointerType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -774,6 +781,7 @@ UnifyRules::expect_param (TyTy::ParamType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -833,6 +841,7 @@ UnifyRules::expect_array (TyTy::ArrayType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -891,6 +900,7 @@ UnifyRules::expect_slice (TyTy::SliceType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -981,6 +991,7 @@ UnifyRules::expect_fndef (TyTy::FnType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1097,6 +1108,7 @@ UnifyRules::expect_fnptr (TyTy::FnPtr *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1167,6 +1179,7 @@ UnifyRules::expect_tuple (TyTy::TupleType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1214,6 +1227,7 @@ UnifyRules::expect_bool (TyTy::BoolType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1261,6 +1275,7 @@ UnifyRules::expect_char (TyTy::CharType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1315,6 +1330,7 @@ UnifyRules::expect_int (TyTy::IntType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1369,6 +1385,7 @@ UnifyRules::expect_uint (TyTy::UintType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1423,6 +1440,7 @@ UnifyRules::expect_float (TyTy::FloatType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1470,6 +1488,7 @@ UnifyRules::expect_isize (TyTy::ISizeType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1517,6 +1536,7 @@ UnifyRules::expect_usize (TyTy::USizeType *ltype, TyTy::BaseType *rtype)
     case TyTy::DYNAMIC:
     case TyTy::CLOSURE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1561,6 +1581,7 @@ UnifyRules::expect_never (TyTy::NeverType *ltype, TyTy::BaseType *rtype)
     case TyTy::USIZE:
     case TyTy::ISIZE:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1605,6 +1626,7 @@ UnifyRules::expect_placeholder (TyTy::PlaceholderType *ltype,
     case TyTy::USIZE:
     case TyTy::ISIZE:
     case TyTy::NEVER:
+    case TyTy::BINDER:
       if (infer_flag)
 	return rtype->clone ();
       gcc_fallthrough ();
@@ -1657,6 +1679,7 @@ UnifyRules::expect_projection (TyTy::ProjectionType *ltype,
     case TyTy::NEVER:
     case TyTy::PLACEHOLDER:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1715,6 +1738,7 @@ UnifyRules::expect_dyn (TyTy::DynamicObjectType *ltype, TyTy::BaseType *rtype)
     case TyTy::PLACEHOLDER:
     case TyTy::PROJECTION:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);
@@ -1785,6 +1809,7 @@ UnifyRules::expect_closure (TyTy::ClosureType *ltype, TyTy::BaseType *rtype)
     case TyTy::PROJECTION:
     case TyTy::DYNAMIC:
     case TyTy::ERROR:
+    case TyTy::BINDER:
       return new TyTy::ErrorType (0);
     }
   return new TyTy::ErrorType (0);

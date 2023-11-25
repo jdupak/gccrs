@@ -35,6 +35,8 @@ public:
 
   bool have_generic_args () const;
 
+  using TyVisitor::visit;
+
   void visit (TyTy::FnType &type) override;
   void visit (TyTy::ADTType &type) override;
   void visit (TyTy::PlaceholderType &type) override;
@@ -79,6 +81,8 @@ public:
   static bool mappings_are_bound (TyTy::BaseType *ty,
 				  TyTy::SubstitutionArgumentMappings &mappings);
 
+  using TyVisitor::visit;
+
   void visit (TyTy::FnType &type) override;
   void visit (TyTy::ADTType &type) override;
   void visit (TyTy::TupleType &type) override;
@@ -116,6 +120,8 @@ class SubstMapperFromExisting : public TyTy::TyVisitor
 public:
   static TyTy::BaseType *Resolve (TyTy::BaseType *concrete,
 				  TyTy::BaseType *receiver);
+
+  using TyVisitor::visit;
 
   void visit (TyTy::FnType &type) override;
   void visit (TyTy::ADTType &type) override;
@@ -155,6 +161,8 @@ class GetUsedSubstArgs : public TyTy::TyConstVisitor
 {
 public:
   static TyTy::SubstitutionArgumentMappings From (const TyTy::BaseType *from);
+
+  using TyConstVisitor::visit;
 
   void visit (const TyTy::FnType &type) override;
   void visit (const TyTy::ADTType &type) override;

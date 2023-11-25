@@ -34,6 +34,8 @@ public:
 
   static tree get_unit_type (Context *ctx);
 
+  using TyConstVisitor::visit;
+
   void visit (const TyTy::InferType &) override;
   void visit (const TyTy::ADTType &) override;
   void visit (const TyTy::TupleType &) override;

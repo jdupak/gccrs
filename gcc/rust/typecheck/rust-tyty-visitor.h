@@ -51,6 +51,11 @@ public:
   virtual void visit (ProjectionType &type) = 0;
   virtual void visit (DynamicObjectType &type) = 0;
   virtual void visit (ClosureType &type) = 0;
+  virtual void visit (Binder &type)
+  {
+    // Binder should be transparent to visitors.
+    type.bound_ty->accept_vis (*this);
+  }
 };
 
 class TyConstVisitor
@@ -80,6 +85,11 @@ public:
   virtual void visit (const ProjectionType &type) = 0;
   virtual void visit (const DynamicObjectType &type) = 0;
   virtual void visit (const ClosureType &type) = 0;
+  virtual void visit (const Binder &type)
+  {
+    // Binder should be transparent to visitors.
+    type.bound_ty->accept_vis (*this);
+  }
 };
 
 } // namespace TyTy

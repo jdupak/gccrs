@@ -56,6 +56,8 @@ public:
     return ok;
   }
 
+  using TyConstVisitor::visit;
+
   virtual void visit (const TupleType &type) override
   {
     ok = false;

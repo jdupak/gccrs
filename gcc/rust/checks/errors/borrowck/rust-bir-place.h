@@ -270,6 +270,8 @@ private:
       case TyTy::CLOSURE:    // TODO: DUNNO
       case TyTy::DYNAMIC:    // TODO: dunno
 	return false;
+      case TyTy::BINDER:
+	return is_type_copy (ty->as<TyTy::Binder> ()->get_bound_ty ());
       }
     rust_unreachable ();
   }
