@@ -31,7 +31,7 @@ TypeCheckContext::get ()
   return instance;
 }
 
-TypeCheckContext::TypeCheckContext () {}
+TypeCheckContext::TypeCheckContext () { lifetime_resolver_stack.push ({}); }
 
 TypeCheckContext::~TypeCheckContext () {}
 
@@ -494,6 +494,62 @@ TypeCheckContext::trait_query_in_progress (DefId id) const
 {
   return trait_queries_in_progress.find (id)
 	 != trait_queries_in_progress.end ();
+}
+
+LifetimePlaceholder
+TypeCheckContext::intern_lifetime (const HIR::Lifetime &lifetime)
+{
+  if (lifetime.get_lifetime_type () == AST::Lifetime::NAMED)
+    {
+      LifetimePlaceholder interned;
+      if (lookup_lifetime (lifetime, &interned))
+	return interned;
+      interned = LifetimePlaceholder (next_lifetime_index++);
+      lifetime_name_interner[lifetime.get_name ()] = interned;
+      return interned;
+    }
+  if (lifetime.get_lifetime_type () == AST::Lifetime::WILDCARD)
+    {
+      return LifetimePlaceholder (next_lifetime_index++);
+    }
+  if (lifetime.get_lifetime_type () == AST::Lifetime::STATIC)
+    {
+      return LifetimePlaceholder::static_lifetime ();
+    }
+  rust_unreachable ();
+}
+
+bool
+TypeCheckContext::lookup_lifetime (const HIR::Lifetime &lifetime,
+				   LifetimePlaceholder *lookup) const
+{
+  if (lifetime.get_lifetime_type () == AST::Lifetime::NAMED)
+    {
+      rust_assert (lifetime.get_name () != "static");
+      auto name = lifetime.get_name ();
+      auto it = lifetime_name_interner.find (name);
+      if (it == lifetime_name_interner.end ())
+	return false;
+      *lookup = it->second;
+      return true;
+    }
+  if (lifetime.get_lifetime_type () == AST::Lifetime::WILDCARD)
+    {
+      *lookup = LifetimePlaceholder::anonymous_lifetime ();
+      return true;
+    }
+  if (lifetime.get_lifetime_type () == AST::Lifetime::STATIC)
+    {
+      *lookup = LifetimePlaceholder::static_lifetime ();
+      return true;
+    }
+  rust_unreachable ();
+}
+
+void
+TypeCheckContext::intern_and_insert_lifetime (const HIR::Lifetime &lifetime)
+{
+  get_lifetime_resolver ().insert_mapping (intern_lifetime (lifetime));
 }
 
 // TypeCheckContextItem

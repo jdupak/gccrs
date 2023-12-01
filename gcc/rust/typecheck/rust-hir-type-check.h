@@ -24,6 +24,8 @@
 #include "rust-hir-trait-reference.h"
 #include "rust-autoderef.h"
 
+#include <stack>
+
 namespace Rust {
 namespace Resolver {
 
@@ -77,6 +79,34 @@ private:
 
   ItemType type;
   Item item;
+};
+
+class LifetimePlaceholder
+{
+  uint32_t interner_index;
+
+public:
+  explicit constexpr LifetimePlaceholder (uint32_t interner_index)
+    : interner_index (interner_index)
+  {}
+
+  LifetimePlaceholder () = default;
+
+  operator uint32_t () const { return interner_index; }
+
+  bool is_static () const { return interner_index == 0; }
+
+  static constexpr LifetimePlaceholder static_lifetime ()
+  {
+    return LifetimePlaceholder (0);
+  }
+
+  static constexpr LifetimePlaceholder anonymous_lifetime ()
+  {
+    return LifetimePlaceholder (1);
+  }
+
+  static constexpr uint32_t FIRST_NAMED_LIFETIME = 2;
 };
 
 class TypeCheckContext
@@ -173,6 +203,12 @@ public:
   void trait_query_completed (DefId id);
   bool trait_query_in_progress (DefId id) const;
 
+  LifetimePlaceholder intern_lifetime (const HIR::Lifetime &name);
+  bool lookup_lifetime (const HIR::Lifetime &lifetime,
+			LifetimePlaceholder *) const;
+
+  void intern_and_insert_lifetime (const HIR::Lifetime &lifetime);
+
 private:
   TypeCheckContext ();
 
@@ -211,6 +247,102 @@ private:
   // query context lookups
   std::set<HirId> querys_in_progress;
   std::set<DefId> trait_queries_in_progress;
+
+  class LifetimeResolver
+  {
+    struct LifetimeBinderRef
+    {
+      uint32_t scope;
+      uint32_t index;
+    };
+
+    std::vector<uint32_t> binder_size_stack;
+    std::vector<std::pair<LifetimePlaceholder, LifetimeBinderRef>>
+      lifetime_lookup;
+
+    WARN_UNUSED_RESULT uint32_t get_current_scope () const
+    {
+      return binder_size_stack.size () - 1;
+    }
+
+  public:
+    void insert_mapping (LifetimePlaceholder placeholder)
+    {
+      lifetime_lookup.push_back (
+	{placeholder, {get_current_scope (), binder_size_stack.back ()++}});
+    }
+
+    void push_binder () { binder_size_stack.push_back (0); }
+    void pop_binder () { binder_size_stack.pop_back (); }
+
+    size_t get_num_bound_regions () const { return binder_size_stack.back (); }
+  };
+
+  // lifetime resolving
+  std::unordered_map<std::string, LifetimePlaceholder> lifetime_name_interner;
+  uint32_t next_lifetime_index = LifetimePlaceholder::FIRST_NAMED_LIFETIME;
+
+  std::stack<LifetimeResolver> lifetime_resolver_stack;
+  std::stack<std::vector<LifetimePlaceholder>> impl_block_stack;
+
+public:
+  LifetimeResolver &get_lifetime_resolver ()
+  {
+    rust_assert (!lifetime_resolver_stack.empty ());
+    return lifetime_resolver_stack.top ();
+  }
+
+  const LifetimeResolver &get_lifetime_resolver () const
+  {
+    rust_assert (!lifetime_resolver_stack.empty ());
+    return lifetime_resolver_stack.top ();
+  }
+
+  class LifetimeResolverGuard
+  {
+  public:
+    enum ScopeKind
+    {
+      RESOLVER,
+      BONDER,
+    };
+
+  private:
+    TypeCheckContext &ctx;
+    ScopeKind kind;
+
+  public:
+    LifetimeResolverGuard (TypeCheckContext &ctx, ScopeKind kind)
+      : ctx (ctx), kind (kind)
+    {
+      if (kind == RESOLVER)
+	{
+	  ctx.lifetime_resolver_stack.push (LifetimeResolver ());
+	}
+      rust_assert (!ctx.lifetime_resolver_stack.empty ());
+      ctx.lifetime_resolver_stack.top ().push_binder ();
+    }
+
+    ~LifetimeResolverGuard ()
+    {
+      rust_assert (!ctx.lifetime_resolver_stack.empty ());
+      ctx.lifetime_resolver_stack.top ().pop_binder ();
+      if (kind == RESOLVER)
+	{
+	  ctx.lifetime_resolver_stack.pop ();
+	}
+    }
+  };
+
+  WARN_UNUSED_RESULT LifetimeResolverGuard push_lifetime_binder ()
+  {
+    return LifetimeResolverGuard (*this, LifetimeResolverGuard::BONDER);
+  }
+
+  WARN_UNUSED_RESULT LifetimeResolverGuard push_clean_lifetime_resolver ()
+  {
+    return LifetimeResolverGuard (*this, LifetimeResolverGuard::RESOLVER);
+  }
 };
 
 class TypeResolution
