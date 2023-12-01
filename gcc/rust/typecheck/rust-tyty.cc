@@ -143,14 +143,15 @@ is_primitive_type_kind (TypeKind kind)
 BaseType::BaseType (HirId ref, HirId ty_ref, TypeKind kind, RustIdent ident,
 		    std::set<HirId> refs)
   : TypeBoundsMappings ({}), kind (kind), ref (ref), ty_ref (ty_ref),
-    combined (refs), ident (ident), mappings (Analysis::Mappings::get ())
+    orig_ref (ref), combined (refs), ident (ident),
+    mappings (Analysis::Mappings::get ())
 {}
 
 BaseType::BaseType (HirId ref, HirId ty_ref, TypeKind kind, RustIdent ident,
 		    std::vector<TypeBoundPredicate> specified_bounds,
 		    std::set<HirId> refs)
   : TypeBoundsMappings (specified_bounds), kind (kind), ref (ref),
-    ty_ref (ty_ref), combined (refs), ident (ident),
+    ty_ref (ty_ref), orig_ref (ref), combined (refs), ident (ident),
     mappings (Analysis::Mappings::get ())
 {}
 
@@ -180,6 +181,11 @@ void
 BaseType::set_ty_ref (HirId id)
 {
   ty_ref = id;
+}
+HirId
+BaseType::get_orig_ref () const
+{
+  return orig_ref;
 }
 
 bool

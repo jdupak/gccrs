@@ -250,6 +250,12 @@ SubstitutionArgumentMappings::get_regions () const
   return regions;
 }
 
+RegionParamList &
+SubstitutionArgumentMappings::get_mut_regions ()
+{
+  return regions;
+}
+
 // SubstitutionArgumentMappings
 
 SubstitutionArgumentMappings::SubstitutionArgumentMappings (
@@ -306,7 +312,7 @@ SubstitutionArgumentMappings::is_error () const
 
 bool
 SubstitutionArgumentMappings::get_argument_for_symbol (
-  const ParamType *param_to_find, SubstitutionArg *argument)
+  const ParamType *param_to_find, SubstitutionArg *argument) const
 {
   for (auto &mapping : mappings)
     {
@@ -580,6 +586,16 @@ const SubstitutionArgumentMappings &
 SubstitutionRef::get_used_arguments () const
 {
   return used_arguments;
+}
+tl::optional<SubstitutionArg>
+SubstitutionRef::get_arg_at (size_t i) const
+{
+  auto param_ty = get_substs ().at (i).get_param_ty ();
+  SubstitutionArg arg = SubstitutionArg::error ();
+  get_used_arguments ().get_argument_for_symbol (param_ty, &arg);
+  if (arg.is_error ())
+    return tl::nullopt;
+  return arg;
 }
 
 const RegionConstraints &

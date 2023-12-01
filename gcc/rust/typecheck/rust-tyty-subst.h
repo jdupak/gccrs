@@ -194,7 +194,7 @@ public:
   bool is_error () const;
 
   bool get_argument_for_symbol (const ParamType *param_to_find,
-				SubstitutionArg *argument);
+				SubstitutionArg *argument) const;
 
   /** Return type parameter index for symbol */
   tl::optional<size_t> find_symbol (const ParamType &param_to_find) const;
