@@ -26,6 +26,8 @@
 #include "rust-substitution-mapper.h"
 #include "rust-type-util.h"
 
+#include <rust-tyty-variance-analysis.h>
+
 namespace Rust {
 namespace Resolver {
 
@@ -196,7 +198,7 @@ TypeCheckItem::visit (HIR::TupleStruct &struct_decl)
   TyTy::ADTType::ReprOptions repr
     = parse_repr_options (attrs, struct_decl.get_locus ());
 
-  TyTy::BaseType *type = new TyTy::ADTType (
+  auto *type = new TyTy::ADTType (
     struct_decl.get_mappings ().get_hirid (), mappings->get_next_hir_id (),
     struct_decl.get_identifier ().as_string (), ident,
     TyTy::ADTType::ADTKind::TUPLE_STRUCT, std::move (variants),
@@ -207,6 +209,8 @@ TypeCheckItem::visit (HIR::TupleStruct &struct_decl)
 
   context->insert_type (struct_decl.get_mappings (), type);
   infered = type;
+
+  TyTy::VarianceAnalysis::add_type_constraints (*type);
 }
 
 void
@@ -259,7 +263,7 @@ TypeCheckItem::visit (HIR::StructStruct &struct_decl)
   TyTy::ADTType::ReprOptions repr
     = parse_repr_options (attrs, struct_decl.get_locus ());
 
-  TyTy::BaseType *type = new TyTy::ADTType (
+  auto *type = new TyTy::ADTType (
     struct_decl.get_mappings ().get_hirid (), mappings->get_next_hir_id (),
     struct_decl.get_identifier ().as_string (), ident,
     TyTy::ADTType::ADTKind::STRUCT_STRUCT, std::move (variants),
@@ -270,6 +274,8 @@ TypeCheckItem::visit (HIR::StructStruct &struct_decl)
 
   context->insert_type (struct_decl.get_mappings (), type);
   infered = type;
+
+  TyTy::VarianceAnalysis::add_type_constraints (*type);
 }
 
 void
@@ -300,7 +306,7 @@ TypeCheckItem::visit (HIR::Enum &enum_decl)
   RustIdent ident{*canonical_path, enum_decl.get_locus ()};
 
   // multi variant ADT
-  TyTy::BaseType *type
+  auto *type
     = new TyTy::ADTType (enum_decl.get_mappings ().get_hirid (),
 			 mappings->get_next_hir_id (),
 			 enum_decl.get_identifier ().as_string (), ident,
@@ -309,6 +315,8 @@ TypeCheckItem::visit (HIR::Enum &enum_decl)
 
   context->insert_type (enum_decl.get_mappings (), type);
   infered = type;
+
+  TyTy::VarianceAnalysis::add_type_constraints (*type);
 }
 
 void
@@ -356,7 +364,7 @@ TypeCheckItem::visit (HIR::Union &union_decl)
 			  TyTy::VariantDef::VariantType::STRUCT, nullptr,
 			  std::move (fields)));
 
-  TyTy::BaseType *type
+  auto *type
     = new TyTy::ADTType (union_decl.get_mappings ().get_hirid (),
 			 mappings->get_next_hir_id (),
 			 union_decl.get_identifier ().as_string (), ident,
@@ -365,6 +373,8 @@ TypeCheckItem::visit (HIR::Union &union_decl)
 
   context->insert_type (union_decl.get_mappings (), type);
   infered = type;
+
+  TyTy::VarianceAnalysis::add_type_constraints (*type);
 }
 
 void
