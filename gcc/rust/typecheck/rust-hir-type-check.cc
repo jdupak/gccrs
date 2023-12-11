@@ -295,7 +295,7 @@ TraitItemReference::get_type_from_fn (/*const*/ HIR::TraitItemFunc &fn) const
 			  : TyTy::FnType::FNTYPE_DEFAULT_FLAGS,
     ABI::RUST, std::move (params), ret_type, substitutions,
     TyTy::SubstitutionArgumentMappings::empty (
-      context->get_lifetime_resolver ().get_num_bound_regions ()), {}); // TODO
+      context->get_lifetime_resolver ().get_num_bound_regions (), {}), {}); // TODO
   context->insert_type (fn.get_mappings (), resolved);
   return resolved;
 }
