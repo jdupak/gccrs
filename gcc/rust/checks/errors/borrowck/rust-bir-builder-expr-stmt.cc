@@ -640,6 +640,15 @@ ExprStmtBuilder::visit (HIR::PathInExpression &expr)
 void
 ExprStmtBuilder::visit (HIR::LetStmt &stmt)
 {
+  tl::optional<PlaceId> init;
+  tl::optional<TyTy::BaseType *> type_annotation;
+
+  if (stmt.has_init_expr ())
+    init = visit_expr (*stmt.get_init_expr ());
+
+  if (stmt.has_type ())
+    type_annotation = lookup_type (*stmt.get_type ());
+
   if (stmt.get_pattern ()->get_pattern_type () == HIR::Pattern::IDENTIFIER)
     {
       // Only if a pattern is just an identifier, no destructuring is needed.
@@ -656,15 +665,10 @@ ExprStmtBuilder::visit (HIR::LetStmt &stmt)
       if (stmt.has_init_expr ())
 	(void) visit_expr (*stmt.get_init_expr (), var);
     }
-  else if (stmt.has_init_expr ())
-    {
-      auto init = visit_expr (*stmt.get_init_expr ());
-      PatternBindingBuilder (ctx, init, tl::nullopt).go (*stmt.get_pattern ());
-    }
   else
     {
-      rust_sorry_at (stmt.get_locus (), "pattern matching in let statements "
-					"without initializer is not supported");
+      PatternBindingBuilder (ctx, init, type_annotation)
+	.go (*stmt.get_pattern ());
     }
 }
 

@@ -144,6 +144,7 @@ TypeCheckItem::visit (HIR::TypeAlias &alias)
     {
       ResolveWhereClauseItem::Resolve (*where_clause_item, region_constraints);
     }
+  // TODO: store region constraints
   infered = actual_type;
 }
 
@@ -332,6 +333,7 @@ TypeCheckItem::visit (HIR::Union &union_decl)
     {
       ResolveWhereClauseItem::Resolve (*where_clause_item, region_constraints);
     }
+  // TODO: store region constraints
 
   std::vector<TyTy::StructFieldType *> fields;
   for (auto &variant : union_decl.get_variants ())
@@ -586,6 +588,7 @@ TypeCheckItem::resolve_impl_block_substitutions (HIR::ImplBlock &impl_block,
     {
       ResolveWhereClauseItem::Resolve (*where_clause_item, region_constraints);
     }
+  // TODO: store region constraints
 
   auto specified_bound = TyTy::TypeBoundPredicate::error ();
   TraitReference *trait_reference = &TraitReference::error_node ();

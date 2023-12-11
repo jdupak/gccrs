@@ -597,6 +597,11 @@ SubstitutionRef::get_arg_at (size_t i) const
     return tl::nullopt;
   return arg;
 }
+const RegionConstraints &
+SubstitutionRef::get_region_constraints () const
+{
+  return region_constraints;
+}
 
 const RegionConstraints &
 SubstitutionRef::get_region_constraints () const
