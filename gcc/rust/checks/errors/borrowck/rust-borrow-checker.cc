@@ -69,6 +69,8 @@ BorrowChecker::go (HIR::Crate &crate)
 	= mappings->get_crate_name (crate.get_mappings ().get_crate_num (),
 				    crate_name);
       rust_assert (ok);
+
+      mkdir_wrapped ("nll_facts_gccrs");
     }
 
   FunctionCollector collector;
@@ -93,6 +95,62 @@ BorrowChecker::go (HIR::Crate &crate)
 	}
 
       auto facts = BIR::FactCollector::collect (bir);
+
+      if (enable_dump_bir)
+	{
+	  mkdir_wrapped ("nll_facts_gccrs/"
+			 + func->get_function_name ().as_string ());
+	  auto make_fact_file
+	    = [&] (const std::string &suffix) -> std::ofstream {
+	    std::string filename = "nll_facts_gccrs/"
+				   + func->get_function_name ().as_string ()
+				   + "/" + suffix + ".facts";
+	    std::ofstream file;
+	    file.open (filename);
+	    if (file.fail ())
+	      {
+		abort ();
+	      }
+	    return file;
+	  };
+
+	  auto loan_issued_at_file = make_fact_file ("loan_issued_at");
+	  rust_assert (loan_issued_at_file.is_open ());
+	  facts.dump_loan_issued_at (loan_issued_at_file);
+	  auto loan_killed_at_file = make_fact_file ("loan_killed_at");
+	  facts.dump_loan_killed_at (loan_killed_at_file);
+	  auto loan_invalidated_at_file
+	    = make_fact_file ("loan_invalidated_at");
+	  facts.dump_loan_invalidated_at (loan_invalidated_at_file);
+	  auto subset_base_file = make_fact_file ("subset_base");
+	  facts.dump_subset_base (subset_base_file);
+	  auto universal_region_file = make_fact_file ("universal_region");
+	  facts.dump_universal_region (universal_region_file);
+	  auto cfg_edge_file = make_fact_file ("cfg_edge");
+	  facts.dump_cfg_edge (cfg_edge_file);
+	  auto var_used_at_file = make_fact_file ("var_used_at");
+	  facts.dump_var_used_at (var_used_at_file);
+	  auto var_defined_at_file = make_fact_file ("var_defined_at");
+	  facts.dump_var_defined_at (var_defined_at_file);
+	  auto var_dropped_at_file = make_fact_file ("var_dropped_at");
+	  facts.dump_var_dropped_at (var_dropped_at_file);
+	  auto use_of_var_derefs_origin_file
+	    = make_fact_file ("use_of_var_derefs_origin");
+	  facts.dump_use_of_var_derefs_origin (use_of_var_derefs_origin_file);
+	  auto drop_of_var_derefs_origin_file
+	    = make_fact_file ("drop_of_var_derefs_origin");
+	  facts.dump_drop_of_var_derefs_origin (drop_of_var_derefs_origin_file);
+	  auto child_path_file = make_fact_file ("child_path");
+	  facts.dump_child_path (child_path_file);
+	  auto path_is_var_file = make_fact_file ("path_is_var");
+	  facts.dump_path_is_var (path_is_var_file);
+	  auto known_placeholder_subset_file
+	    = make_fact_file ("known_placeholder_subset");
+	  facts.dump_known_placeholder_subset (known_placeholder_subset_file);
+	  auto path_moved_at_base_file = make_fact_file ("path_moved_at_base");
+	  facts.dump_path_moved_at_base (path_moved_at_base_file);
+	}
+
       Polonius::polonius_run (facts.freeze (), true);
     }
 
