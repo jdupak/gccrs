@@ -32,6 +32,9 @@ To get the BIR dump into a similar format, run the following command:
 
 ## TODO
 
+- lifetime parameters
+  - resolve bounds and save them in TyTy
+
 - scope handling, cleanup
 - switch coercions to adjustments from typechecking
 - operator overloading
