@@ -2,9 +2,8 @@
 #define RUST_BIR_FREE_REGION_H
 
 namespace Rust {
-namespace Polonius {
-using Origin = size_t;
-} // namespace Polonius
+#include <polonius/rust-polonius-ffi.h>
+
 using FreeRegion = size_t;
 
 class FreeRegions

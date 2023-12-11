@@ -29,38 +29,88 @@
 
 namespace Rust {
 
+namespace TyTy {
+
+using Variance = VarianceAnalysis::Variance;
+
+class RenumberCtx
+{
+  Polonius::Origin next_region = 0;
+
+public:
+  Polonius::Origin get_next_region () { return next_region++; }
+};
+
+// class Renumber : public TyVisitor
+// {
+//   RenumberCtx &ctx;
+//   std::vector<BIR::FreeRegion> regions;
+//
+//   bool nested_ref = false;
+//
+// public:
+//   void visit_region (Region region, Variance variance = Variance::covariant
+//   ())
+//   {
+//     if (region.is_free ())
+//       {
+// 	regions.push_back ({variance, ctx.get_next_region ()});
+//       }
+//     // TODO
+//   }
+//
+//   void visit (InferType &type) override {}
+//   void visit (ADTType &type) override
+//   {
+//     auto n = type.get_num_lifetime_params ();
+//     for (size_t i = 0; i < n; i++)
+//       {
+// 	// regions.push_back ({Variance::covariant (), ctx.get_next_region ()});
+//       }
+//   }
+//   void visit (TupleType &type) override {}
+//   void visit (FnType &type) override {}
+//   void visit (FnPtr &type) override {}
+//
+//   void visit (ErrorType &type) override {}
+//   void visit (CharType &type) override {}
+//   void visit (ReferenceType &type) override
+//   {
+//     visit_region (type.get_region (),
+// 		  nested_ref ? Variance::bivariant () : Variance::covariant ());
+//     auto save_nested_ref = nested_ref;
+//     nested_ref = true;
+//     type.get_base ()->accept_vis (*this);
+//     nested_ref = save_nested_ref;
+//   }
+//   void visit (ParamType &type) override {}
+//   void visit (StrType &type) override {}
+//   void visit (NeverType &type) override {}
+//   void visit (PlaceholderType &type) override {}
+//   void visit (ProjectionType &type) override {}
+//   void visit (DynamicObjectType &type) override {}
+//   void visit (ClosureType &type) override {}
+//
+//   // Do not contain regions.
+//   void visit (PointerType &type) override {}
+//   void visit (ArrayType &type) override {}
+//   void visit (SliceType &type) override {}
+//   void visit (BoolType &type) override {}
+//   void visit (IntType &type) override {}
+//   void visit (UintType &type) override {}
+//   void visit (FloatType &type) override {}
+//   void visit (USizeType &type) override {}
+//   void visit (ISizeType &type) override {}
+// };
+
+} // namespace TyTy
+
 namespace BIR {
 
 /** Holds the context of BIR building so that it can be shared/passed between
  * different builders. */
 struct BuilderContext
 {
-  class LifetimeResolver
-  {
-    using Index = uint32_t;
-    using Value = std::string;
-
-    Index next_index = FIRST_NORMAL_LIFETIME_ID;
-    std::unordered_map<Value, Index> value_to_index;
-
-  public:
-    Index resolve (const Value &value)
-    {
-      auto found = value_to_index.find (value);
-      if (found != value_to_index.end ())
-	{
-	  return found->second;
-	}
-      value_to_index.emplace (value, next_index);
-      return next_index++;
-    }
-
-    /** Returns a new anonymous lifetime. */
-    Index get_anonymous () { return next_index++; }
-
-    Index size () const { return next_index; }
-  };
-
   struct LoopAndLabelCtx
   {
     bool is_loop;      // Loop or labelled block
@@ -95,7 +145,6 @@ struct BuilderContext
    * constants)
    */
   PlaceDB place_db;
-  LifetimeResolver lifetime_interner;
   // Used for cleaner dump.
   std::vector<PlaceId> arguments;
   /**
@@ -107,6 +156,10 @@ struct BuilderContext
   /** Context for current situation (loop, label, etc.) */
   std::vector<LoopAndLabelCtx> loop_and_label_stack;
 
+  LoanId next_loan_id = 0;
+
+  FreeRegions fn_free_regions{{}};
+
 public:
   BuilderContext ()
     : tyctx (*Resolver::TypeCheckContext::get ()),
@@ -116,27 +169,6 @@ public:
   }
 
   BasicBlock &get_current_bb () { return basic_blocks[current_bb]; }
-
-  Lifetime lookup_lifetime (const tl::optional<HIR::Lifetime> &lifetime)
-  {
-    if (!lifetime.has_value ())
-      return {lifetime_interner.get_anonymous ()};
-    switch (lifetime->get_lifetime_type ())
-      {
-	case AST::Lifetime::NAMED: {
-	  return {lifetime_interner.resolve (lifetime->get_name ())};
-	}
-	case AST::Lifetime::STATIC: {
-	  return STATIC_LIFETIME;
-	}
-	case AST::Lifetime::WILDCARD: {
-	  rust_sorry_at (lifetime->get_locus (),
-			 "lifetime elision is not yet implemented");
-	  return NO_LIFETIME;
-	}
-      }
-    rust_unreachable ();
-  };
 
   const LoopAndLabelCtx &lookup_label (NodeId label)
   {
@@ -167,25 +199,31 @@ protected:
 protected:
   explicit AbstractBuilder (BuilderContext &ctx) : ctx (ctx) {}
 
-  PlaceId declare_variable (const Analysis::NodeMapping &node)
+  PlaceId declare_variable (const Analysis::NodeMapping &node,
+			    bool user_type_annotation = false)
   {
-    return declare_variable (node, lookup_type (node.get_hirid ()));
+    return declare_variable (node, lookup_type (node.get_hirid ()),
+			     user_type_annotation);
   }
 
   PlaceId declare_variable (const Analysis::NodeMapping &node,
-			    TyTy::BaseType *ty)
+			    TyTy::BaseType *ty,
+			    bool user_type_annotation = false)
   {
     const NodeId nodeid = node.get_nodeid ();
 
     // In debug mode, check that the variable is not already declared.
     rust_assert (ctx.place_db.lookup_variable (nodeid) == INVALID_PLACE);
 
-    auto place = ctx.place_db.add_variable (nodeid, ty);
+    auto place_id = ctx.place_db.add_variable (nodeid, ty);
 
     if (ctx.place_db.get_current_scope_id () != 0)
-      push_storage_live (place);
+      push_storage_live (place_id);
 
-    return place;
+    if (user_type_annotation)
+      push_user_type_ascription (place_id, ty);
+
+    return place_id;
   }
 
   void push_new_scope () { ctx.place_db.push_new_scope (); }
@@ -213,6 +251,37 @@ protected:
       }
   }
 
+  FreeRegions bind_regions (std::vector<TyTy::Region> regions,
+			    FreeRegions parent_free_regions)
+  {
+    std::vector<FreeRegion> free_regions;
+    for (auto &region : regions)
+      {
+	if (region.is_early_bound ())
+	  {
+	    free_regions.push_back (parent_free_regions[region.get_index ()]);
+	  }
+	else if (region.is_static ())
+	  {
+	    free_regions.push_back (0);
+	  }
+	else if (region.is_anonymous ())
+	  {
+	    free_regions.push_back (ctx.place_db.get_next_free_region ());
+	  }
+	else if (region.is_named ())
+	  {
+	    rust_unreachable (); // FIXME
+	  }
+	else
+	  {
+	    rust_sorry_at (UNKNOWN_LOCATION, "Unimplemented");
+	    rust_unreachable ();
+	  }
+      }
+    return free_regions;
+  }
+
 protected: // Helpers to add BIR statements
   void push_assignment (PlaceId lhs, AbstractExpr *rhs)
   {
@@ -222,6 +291,8 @@ protected: // Helpers to add BIR statements
 
   void push_assignment (PlaceId lhs, PlaceId rhs)
   {
+    auto &lhs_place = ctx.place_db[lhs];
+    auto &rhs_place = ctx.place_db[rhs];
     push_assignment (lhs, new Assignment (rhs));
   }
 
@@ -256,12 +327,27 @@ protected: // Helpers to add BIR statements
 
   void push_storage_live (PlaceId place)
   {
-    ctx.get_current_bb ().statements.emplace_back (Statement::Kind::STORAGE_LIVE, place);
+    ctx.get_current_bb ().statements.emplace_back (
+      Statement::Kind::STORAGE_LIVE, place);
   }
 
   void push_storage_dead (PlaceId place)
   {
-    ctx.get_current_bb ().statements.emplace_back (Statement::Kind::STORAGE_DEAD, place);
+    ctx.get_current_bb ().statements.emplace_back (
+      Statement::Kind::STORAGE_DEAD, place);
+  }
+
+  void push_user_type_ascription (PlaceId place, TyTy::BaseType *ty)
+  {
+    ctx.get_current_bb ().statements.emplace_back (
+      Statement::Kind::USER_TYPE_ASCRIPTION, place, ty);
+  }
+
+  BorrowExpr *borrow_place (PlaceId place)
+  {
+    // FIXME
+    return new BorrowExpr (place, ctx.next_loan_id++,
+			   ctx.place_db.get_next_free_region ());
   }
 
   PlaceId move_place (PlaceId arg)
@@ -273,6 +359,15 @@ protected: // Helpers to add BIR statements
       }
 
     return arg;
+  }
+
+  PlaceId reborrow_place (PlaceId arg)
+  {
+    auto ty = ctx.place_db[arg].tyty->as<TyTy::ReferenceType> ();
+    push_tmp_assignment (borrow_place (ctx.place_db.lookup_or_add_path (
+			   Place::DEREF, ty->get_base (), arg)),
+			 ty);
+    return translated;
   }
 
   template <typename T> void move_all (T &args)
@@ -416,7 +511,7 @@ protected: // Implicit conversions.
       {
 	auto ty = ctx.place_db[translated].tyty;
 	push_tmp_assignment (
-	  new BorrowExpr (translated),
+	  borrow_place (translated),
 	  new TyTy::ReferenceType (ty->get_ref (), TyTy::TyVar (ty->get_ref ()),
 				   Mutability::Imm,
 				   TyTy::Region::make_anonymous ()));
@@ -442,8 +537,8 @@ protected:
   {}
 
   /**
-   * Wrapper that provides return value based API inside a visitor which has to
-   * use global state to pass the data around.
+   * Wrapper that provides return value based API inside a visitor which has
+   * to use global state to pass the data around.
    * @param dst_place Place to assign the produced value to, optionally
    * allocated by the caller.
    * */
@@ -462,10 +557,11 @@ protected:
 
   /**
    * Create a return value of a subexpression, which produces an expression.
-   * Use `return_place` for subexpression that only produce a place (look it up)
-   * to avoid needless assignments.
+   * Use `return_place` for subexpression that only produce a place (look it
+   * up) to avoid needless assignments.
    *
-   * @param can_panic mark that expression can panic to insert jump to cleanup.
+   * @param can_panic mark that expression can panic to insert jump to
+   * cleanup.
    */
   void return_expr (AbstractExpr *expr, TyTy::BaseType *ty,
 		    bool can_panic = false)

@@ -32,9 +32,8 @@ class PatternBindingBuilder : protected AbstractBuilder,
 			      public HIR::HIRPatternVisitor
 {
   /** Value of initialization expression. */
-  PlaceId init;
-  /** This is where lifetime annotations are stored. */
-  tl::optional<HIR::Type *> type;
+  tl::optional<PlaceId> init;
+  tl::optional<TyTy::BaseType *> type_annotation;
 
   /** Emulates recursive stack saving and restoring inside a visitor. */
   class SavedState
@@ -42,24 +41,22 @@ class PatternBindingBuilder : protected AbstractBuilder,
     PatternBindingBuilder *builder;
 
   public:
-    const PlaceId init;
-    const tl::optional<HIR::Type *> type;
+    const tl::optional<PlaceId> init;
+    const tl::optional<TyTy::BaseType *> type_annotation;
 
   public:
     explicit SavedState (PatternBindingBuilder *builder)
-      : builder (builder), init (builder->init), type (builder->type)
+      : builder (builder), init (builder->init),
+	type_annotation (builder->type_annotation)
     {}
 
-    ~SavedState ()
-    {
-      builder->init = init;
-      builder->type = type;
-    }
+    ~SavedState () { builder->init = init; }
   };
 
 public:
-  PatternBindingBuilder (BuilderContext &ctx, PlaceId init, HIR::Type *type)
-    : AbstractBuilder (ctx), init (init), type (optional_from_ptr (type))
+  PatternBindingBuilder (BuilderContext &ctx, tl::optional<PlaceId> init,
+			 tl::optional<TyTy::BaseType *> type_annotation)
+    : AbstractBuilder (ctx), init (init), type_annotation (type_annotation)
   {}
 
   void go (HIR::Pattern &pattern) { pattern.accept_vis (*this); }
@@ -70,25 +67,24 @@ public:
     if (is_ref)
       {
 	translated = declare_variable (
-	  node, new TyTy::ReferenceType (node.get_hirid (),
-					 TyTy::TyVar (node.get_hirid ()),
-					 (is_mut) ? Mutability::Mut
-						  : Mutability::Imm, TyTy::Region::make_anonymous ()));
-	push_assignment (translated, new BorrowExpr (init));
+	  node,
+	  new TyTy::ReferenceType (node.get_hirid (),
+				   TyTy::TyVar (node.get_hirid ()),
+				   (is_mut) ? Mutability::Mut : Mutability::Imm,
+				   TyTy::Region::make_anonymous ()));
+	if (init.has_value ())
+		{
+			// push_tmp_assignment (borrow_place (init.value ()));
+		}
       }
     else
       {
 	translated = declare_variable (node);
-	push_assignment (translated, init);
       }
-    auto &init_place = ctx.place_db[init];
-    auto &translated_place = ctx.place_db[translated];
-    if (init_place.tyty->get_kind () == TyTy::REF)
+
+    if (init.has_value ())
       {
-	init_place.lifetime = ctx.lookup_lifetime (type.map ([] (HIR::Type *t) {
-	  return static_cast<HIR::ReferenceType *> (t)->get_lifetime ();
-	}));
-	translated_place.lifetime = init_place.lifetime;
+	push_assignment (translated, init.value ());
       }
   }
 
@@ -104,15 +100,15 @@ public:
   {
     SavedState saved (this);
 
-    auto ref_type = type.map (
-      [] (HIR::Type *t) { return static_cast<HIR::ReferenceType *> (t); });
+    init = init.map ([&] (PlaceId id) {
+      return ctx.place_db.lookup_or_add_path (Place::DEREF,
+					      lookup_type (pattern), id);
+    });
 
-    type = ref_type.map (
-      [] (HIR::ReferenceType *r) { return r->get_base_type ().get (); });
-    init = ctx.place_db.lookup_or_add_path (Place::DEREF, lookup_type (pattern),
-					    saved.init);
-    ctx.place_db[init].lifetime
-      = ctx.lookup_lifetime (ref_type.map (&HIR::ReferenceType::get_lifetime));
+    type_annotation = type_annotation.map ([&] (TyTy::BaseType *ty) {
+      return ty->as<TyTy::ReferenceType> ()->get_base ();
+    });
+
     pattern.get_referenced_pattern ()->accept_vis (*this);
   }
 
@@ -120,12 +116,18 @@ public:
   {
     SavedState saved (this);
 
-    type = type.map ([] (HIR::Type *t) {
-      return static_cast<HIR::SliceType *> (t)->get_element_type ().get ();
-    });
     // All indexes are supposed to point to the same place for borrow-checking.
-    init = ctx.place_db.lookup_or_add_path (Place::INDEX, lookup_type (pattern),
-					    saved.init);
+    // init = ctx.place_db.lookup_or_add_path (Place::INDEX, lookup_type
+    // (pattern), saved.init);
+    init = init.map ([&] (PlaceId id) {
+      return ctx.place_db.lookup_or_add_path (Place::INDEX,
+					      lookup_type (pattern), id);
+    });
+
+    type_annotation = type_annotation.map ([&] (TyTy::BaseType *ty) {
+      return ty->as<TyTy::SliceType> ()->get_element_type ();
+    });
+
     for (auto &item : pattern.get_items ())
       {
 	item->accept_vis (*this);
@@ -142,15 +144,12 @@ public:
   {
     SavedState saved (this);
 
-    auto tyty = ctx.place_db[init].tyty;
+    auto tyty = ctx.place_db[init.value ()].tyty;
     rust_assert (tyty->get_kind () == TyTy::ADT);
     auto adt_ty = static_cast<TyTy::ADTType *> (tyty);
     rust_assert (adt_ty->is_struct_struct ());
     auto struct_ty = adt_ty->get_variants ().at (0);
 
-    auto struct_type = type.map ([] (HIR::Type *t) {
-      return static_cast<HIR::TypePath *> (t)->get_final_segment ().get ();
-    });
     for (auto &field :
 	 pattern.get_struct_pattern_elems ().get_struct_pattern_fields ())
       {
@@ -159,9 +158,26 @@ public:
 	    case HIR::StructPatternField::TUPLE_PAT: {
 	      auto tuple
 		= static_cast<HIR::StructPatternFieldTuplePat *> (field.get ());
-	      init = ctx.place_db.lookup_or_add_path (
-		Place::FIELD, lookup_type (*tuple->get_tuple_pattern ()),
-		saved.init, tuple->get_index ());
+
+	      // init = ctx.place_db.lookup_or_add_path (
+	      // Place::FIELD, lookup_type (*tuple->get_tuple_pattern ()),
+	      // saved.init.value (), tuple->get_index ());
+
+	      init = init.map ([&] (PlaceId id) {
+		return ctx.place_db.lookup_or_add_path (
+		  Place::FIELD, lookup_type (*tuple->get_tuple_pattern ()), id,
+		  tuple->get_index ());
+	      });
+
+	      type_annotation = type_annotation.map ([&] (TyTy::BaseType *ty) {
+		return ty->as<TyTy::ADTType> ()
+		  ->get_variants ()
+		  .at (0)
+		  ->get_fields ()
+		  .at (tuple->get_index ())
+		  ->get_field_type ();
+	      });
+
 	      tuple->get_tuple_pattern ()->accept_vis (*this);
 	      break;
 	    }
@@ -177,7 +193,8 @@ public:
 	      init
 		= ctx.place_db.lookup_or_add_path (Place::FIELD,
 						   field_ty->get_field_type (),
-						   saved.init, field_index);
+						   saved.init.value (),
+						   field_index);
 	      ident_field->get_pattern ()->accept_vis (*this);
 	      break;
 	    }
@@ -193,7 +210,8 @@ public:
 	      init
 		= ctx.place_db.lookup_or_add_path (Place::FIELD,
 						   field_ty->get_field_type (),
-						   saved.init, field_index);
+						   saved.init.value (),
+						   field_index);
 	      visit_identifier (ident_field->get_mappings (),
 				ident_field->get_has_ref (),
 				ident_field->is_mut ());
@@ -208,15 +226,19 @@ public:
   {
     for (auto &item : fields)
       {
-	type = saved.type.map ([&] (HIR::Type *t) {
-	  return static_cast<HIR::TupleType *> (t)
-	    ->get_elems ()
-	    .at (index)
-	    .get ();
+	init = init.map ([&] (PlaceId id) {
+	  return ctx.place_db.lookup_or_add_path (Place::FIELD,
+						  lookup_type (*item), id,
+						  index);
 	});
-	init
-	  = ctx.place_db.lookup_or_add_path (Place::FIELD, lookup_type (*item),
-					     saved.init, index);
+
+	type_annotation = type_annotation.map ([&] (TyTy::BaseType *ty) {
+	  return ty->as<TyTy::TupleType> ()
+	    ->get_fields ()
+	    .at (index)
+	    .get_tyty ();
+	});
+
 	item->accept_vis (*this);
 	index++;
       }
@@ -238,7 +260,7 @@ public:
 	  auto &items = static_cast<HIR::TuplePatternItemsRanged &> (
 	    *pattern.get_items ());
 
-	  auto tyty = ctx.place_db[init].tyty;
+	  auto tyty = ctx.place_db[init.value ()].tyty;
 	  rust_assert (tyty->get_kind () == TyTy::TUPLE);
 
 	  auto skipped = (static_cast<TyTy::TupleType *> (tyty))->num_fields ()
@@ -264,7 +286,7 @@ public:
 	  auto &items
 	    = static_cast<HIR::TupleStructItemsRange &> (*pattern.get_items ());
 
-	  auto tyty = ctx.place_db[init].tyty;
+	  auto tyty = ctx.place_db[init.value ()].tyty;
 	  rust_assert (tyty->get_kind () == TyTy::ADT);
 	  auto adt_ty = static_cast<TyTy::ADTType *> (tyty);
 	  rust_assert (adt_ty->is_tuple_struct ());
@@ -293,12 +315,6 @@ public:
   void visit (HIR::PathInExpression &expression) override {}
   void visit (HIR::QualifiedPathInExpression &expression) override {}
   void visit (HIR::RangePattern &pattern) override {}
-
-private:
-  template <typename T> tl::optional<T> *get_type ()
-  {
-    return static_cast<T *> (type);
-  }
 };
 } // namespace BIR
 } // namespace Rust

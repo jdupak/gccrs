@@ -7,14 +7,6 @@ namespace BIR {
 
 constexpr auto indentation = "    ";
 
-uint32_t
-get_lifetime_name (Lifetime lifetime_id)
-{
-  rust_assert (lifetime_id.id >= FIRST_NORMAL_LIFETIME_ID);
-  // Start from 1 as rustc does.
-  return lifetime_id.id - FIRST_NORMAL_LIFETIME_ID + 1;
-}
-
 std::string
 get_tyty_name (TyTy::BaseType *tyty)
 {
@@ -116,8 +108,8 @@ Dump::go (bool enable_simplify_cfg)
     stream << "_" << place_map[place_id] << ": "
 	   << get_tyty_name (func.place_db[place_id].tyty);
   });
-  stream << ") -> " << get_tyty_name (func.place_db[RETURN_VALUE_PLACE].tyty)
-	 << " {\n";
+  stream << ") -> " << get_tyty_name (func.place_db[RETURN_VALUE_PLACE].tyty);
+  stream << " {\n";
 
   // Print locals declaration.
   visit_scope (0);
@@ -138,16 +130,17 @@ Dump::go (bool enable_simplify_cfg)
       BasicBlock &bb = func.basic_blocks[statement_bb];
       stream << "\n";
       stream << indentation << "bb" << bb_fold_map[statement_bb] << ": {\n";
+      size_t i = 0;
       for (auto &stmt : bb.statements)
 	{
-	  stream << indentation << indentation;
+	  stream << indentation << i++ << indentation;
 	  visit (stmt);
 	  stream << ";\n";
 	}
       if (!bb_terminated)
 	{
 	  stream << indentation << indentation << "goto -> bb"
-		 << bb_fold_map[bb.successors.at (0)] << ";\n";
+		 << bb_fold_map[bb.successors.at (0)] << ";\t\t" << i++ << "\n";
 	}
       stream << indentation << "}\n";
     }
@@ -250,22 +243,12 @@ void
 Dump::visit (const BorrowExpr &expr)
 {
   stream << "&";
-  visit_lifetime (statement_place);
   visit_place (expr.get_place ());
 }
 
 void
 Dump::visit_lifetime (PlaceId place_id)
-{
-  const Place &place = func.place_db[place_id];
-  if (place.lifetime.has_lifetime ())
-    {
-      if (place.lifetime.id == STATIC_LIFETIME_ID)
-	stream << "'static ";
-      else
-	stream << "'#" << get_lifetime_name (place.lifetime) << " ";
-    }
-}
+{}
 
 void
 Dump::visit (const InitializerExpr &expr)
@@ -357,7 +340,8 @@ Dump::visit_scope (ScopeId id, size_t depth)
     {
       indent (depth + 1) << "let _";
       stream << place_map[local] << ": "
-	     << get_tyty_name (func.place_db[local].tyty) << ";\n";
+	     << get_tyty_name (func.place_db[local].tyty);
+      stream << ";\n";
     }
   for (auto &child : scope.children)
     {

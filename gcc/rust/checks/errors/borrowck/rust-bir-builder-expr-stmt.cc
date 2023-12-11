@@ -93,8 +93,8 @@ ExprStmtBuilder::visit (HIR::ClosureExpr &expr)
 void
 ExprStmtBuilder::visit (HIR::StructExprStructFields &fields)
 {
-  auto struct_ty
-    = lookup_type (fields)->as<TyTy::ADTType> ()->get_variants ().at (0);
+  auto *p_adt_type = lookup_type (fields)->as<TyTy::ADTType> ();
+  auto struct_ty = p_adt_type->get_variants ().at (0);
   auto init_values = StructBuilder (ctx, struct_ty).build (fields);
   move_all (init_values);
   return_expr (new InitializerExpr (std::move (init_values)),
@@ -119,7 +119,8 @@ void
 ExprStmtBuilder::visit (HIR::BorrowExpr &expr)
 {
   auto operand = visit_expr (*expr.get_expr ());
-  return_expr (new BorrowExpr (operand), lookup_type (expr));
+  // BorrowExpr cannot be annotated with lifetime.
+  return_expr (borrow_place (operand), lookup_type (expr));
 }
 
 void
@@ -278,6 +279,7 @@ ExprStmtBuilder::visit (HIR::CallExpr &expr)
     }
 
   move_all (arguments);
+
   return_expr (new CallExpr (fn, std::move (arguments)), lookup_type (expr),
 	       true);
 }
@@ -646,12 +648,10 @@ ExprStmtBuilder::visit (HIR::LetStmt &stmt)
       // variable, so it would emit extra assignment.
       auto var = declare_variable (stmt.get_pattern ()->get_mappings ());
       auto &var_place = ctx.place_db[var];
-      if (var_place.tyty->get_kind () == TyTy::REF)
+      if (var_place.tyty->get_kind () == TyTy::REF
+	  && stmt.get_type () != nullptr)
 	{
-	  var_place.lifetime = ctx.lookup_lifetime (
-	    optional_from_ptr (
-	      static_cast<HIR::ReferenceType *> (stmt.get_type ().get ()))
-	      .map (&HIR::ReferenceType::get_lifetime));
+	  auto ty = static_cast<HIR::ReferenceType *> (stmt.get_type ().get ());
 	}
       if (stmt.has_init_expr ())
 	(void) visit_expr (*stmt.get_init_expr (), var);
@@ -659,8 +659,7 @@ ExprStmtBuilder::visit (HIR::LetStmt &stmt)
   else if (stmt.has_init_expr ())
     {
       auto init = visit_expr (*stmt.get_init_expr ());
-      PatternBindingBuilder (ctx, init, stmt.get_type ().get ())
-	.go (*stmt.get_pattern ());
+      PatternBindingBuilder (ctx, init, tl::nullopt).go (*stmt.get_pattern ());
     }
   else
     {

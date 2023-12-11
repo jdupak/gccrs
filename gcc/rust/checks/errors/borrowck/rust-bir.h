@@ -22,6 +22,9 @@
 #include "rust-bir-place.h"
 #include "rust-bir-visitor.h"
 
+#include "polonius/rust-polonius-ffi.h"
+#include "rust-tyty-variance-analysis.h"
+
 namespace Rust {
 
 namespace BIR {
@@ -42,7 +45,8 @@ struct Function
   PlaceDB place_db;
   std::vector<PlaceId> arguments;
   std::vector<BasicBlock> basic_blocks;
-  size_t num_lifetimes;
+  FreeRegions universal_regions;
+  std::vector<std::pair<FreeRegion, FreeRegion>> universal_region_bounds;
 };
 
 /** Single statement of BIR. */
@@ -51,13 +55,52 @@ class Statement
 public:
   enum class Kind
   {
-    ASSIGNMENT,	  // <place> = <expr>
-    SWITCH,	  // switch <place>
-    RETURN,	  // return
-    GOTO,	  // goto
-    STORAGE_DEAD, // StorageDead(<place>)
-    STORAGE_LIVE, // StorageLive(<place>)
+    ASSIGNMENT,		  // <place> = <expr>
+    SWITCH,		  // switch <place>
+    RETURN,		  // return
+    GOTO,		  // goto
+    STORAGE_DEAD,	  // StorageDead(<place>)
+    STORAGE_LIVE,	  // StorageLive(<place>)
+    USER_TYPE_ASCRIPTION, // UserTypeAscription(<place>, <tyty>)
   };
+
+  // union
+  // {
+  //   struct Assignment
+  //   {
+  //     PlaceId lhs;
+  //     AbstractExpr *rhs;
+  //   } assignment;
+  //
+  //   struct Switch
+  //   {
+  //     PlaceId switch_val;
+  //   } switch_;
+  //
+  //   struct Return
+  //   {
+  //   } return_;
+  //
+  //   struct Goto
+  //   {
+  //   };
+  //
+  //   struct StorageDead
+  //   {
+  //     PlaceId place;
+  //   } storage_dead;
+  //
+  //   struct StorageLive
+  //   {
+  //     PlaceId place;
+  //   } storage_live;
+  //
+  //   struct UserTypeAscription
+  //   {
+  //     PlaceId place;
+  //     TyTy::BaseType *tyty;
+  //   } user_type_ascription;
+  // };
 
 private:
   Kind kind;
@@ -69,6 +112,7 @@ private:
   // ASSIGNMENT: rhs
   // otherwise: <unused>
   std::unique_ptr<AbstractExpr> expr;
+  TyTy::BaseType *type;
 
 public:
   Statement (PlaceId lhs, AbstractExpr *rhs)
@@ -80,10 +124,15 @@ public:
     : kind (kind), place (place), expr (expr)
   {}
 
+  explicit Statement (Kind kind, PlaceId place, TyTy::BaseType *type)
+    : kind (kind), place (place), type (type)
+  {}
+
 public:
   WARN_UNUSED_RESULT Kind get_kind () const { return kind; }
   WARN_UNUSED_RESULT PlaceId get_place () const { return place; }
   WARN_UNUSED_RESULT AbstractExpr &get_expr () const { return *expr; }
+  WARN_UNUSED_RESULT TyTy::BaseType *get_type () const { return type; }
 };
 
 /** Unique identifier for a basic block in the BIR. */
@@ -168,14 +217,17 @@ public:
 class BorrowExpr : public VisitableImpl<AbstractExpr, BorrowExpr>
 {
   PlaceId place;
-  LoanId loan_id;
+  LoanId loan;
+  Polonius::Origin origin;
 
 public:
-  explicit BorrowExpr (PlaceId place)
-    : VisitableImpl<AbstractExpr, BorrowExpr> (ExprKind::BORROW), place (place)
+  explicit BorrowExpr (PlaceId place, LoanId loan_id, Polonius::Origin lifetime)
+    : VisitableImpl<AbstractExpr, BorrowExpr> (ExprKind::BORROW), place (place),
+      loan (loan_id), origin (lifetime)
   {}
   WARN_UNUSED_RESULT PlaceId get_place () const { return place; }
-  WARN_UNUSED_RESULT LoanId get_loan_id () const { return loan_id; }
+  WARN_UNUSED_RESULT LoanId get_loan () const { return loan; }
+  WARN_UNUSED_RESULT Polonius::Origin get_origin () const { return origin; }
 };
 
 /**
@@ -196,19 +248,19 @@ public:
   WARN_UNUSED_RESULT PlaceId get_rhs () const { return rhs; }
 };
 
-class CallExpr : public VisitableImpl<AbstractExpr, CallExpr>
+class CallExpr final : public VisitableImpl<AbstractExpr, CallExpr>
 {
   std::vector<PlaceId> arguments;
   PlaceId callable;
 
 public:
   explicit CallExpr (PlaceId callable, std::vector<PlaceId> &&arguments)
-    : VisitableImpl<AbstractExpr, CallExpr> (ExprKind::CALL),
-      arguments (arguments), callable (callable)
+    : VisitableImpl (ExprKind::CALL), arguments (arguments),
+      callable (callable)
   {}
 
 public:
-  [[nodiscard]] const std::vector<PlaceId> &get_arguments () const
+  WARN_UNUSED_RESULT const std::vector<PlaceId> &get_arguments () const
   {
     return arguments;
   }
