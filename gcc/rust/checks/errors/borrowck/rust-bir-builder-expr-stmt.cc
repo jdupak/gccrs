@@ -643,12 +643,9 @@ ExprStmtBuilder::visit (HIR::LetStmt &stmt)
       // (init expr is evaluated before pattern binding) into a
       // variable, so it would emit extra assignment.
       auto var = declare_variable (stmt.get_pattern ()->get_mappings ());
-      auto &var_place = ctx.place_db[var];
-      if (var_place.tyty->get_kind () == TyTy::REF
-	  && stmt.get_type () != nullptr)
-	{
-	  auto ty = static_cast<HIR::ReferenceType *> (stmt.get_type ().get ());
-	}
+      if (stmt.has_type ())
+	push_user_type_ascription (var, lookup_type (*stmt.get_type ()));
+
       if (stmt.has_init_expr ())
 	(void) visit_expr (*stmt.get_init_expr (), var);
     }

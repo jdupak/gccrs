@@ -33,7 +33,8 @@ class PatternBindingBuilder : protected AbstractBuilder,
 {
   /** Value of initialization expression. */
   tl::optional<PlaceId> init;
-  tl::optional<TyTy::BaseType *> type_annotation;
+  tl::optional<TyTy::BaseType*> type_annotation;
+  tl::optional<FreeRegions> regions;
 
   /** Emulates recursive stack saving and restoring inside a visitor. */
   class SavedState
@@ -42,12 +43,11 @@ class PatternBindingBuilder : protected AbstractBuilder,
 
   public:
     const tl::optional<PlaceId> init;
-    const tl::optional<TyTy::BaseType *> type_annotation;
+    const tl::optional<FreeRegions> regions;
 
   public:
     explicit SavedState (PatternBindingBuilder *builder)
-      : builder (builder), init (builder->init),
-	type_annotation (builder->type_annotation)
+      : builder (builder), init (builder->init), regions (builder->regions)
     {}
 
     ~SavedState () { builder->init = init; }
@@ -55,8 +55,9 @@ class PatternBindingBuilder : protected AbstractBuilder,
 
 public:
   PatternBindingBuilder (BuilderContext &ctx, tl::optional<PlaceId> init,
-			 tl::optional<TyTy::BaseType *> type_annotation)
-    : AbstractBuilder (ctx), init (init), type_annotation (type_annotation)
+			 tl::optional<TyTy::BaseType*> type_annotation)
+    : AbstractBuilder (ctx), init (init), type_annotation (type_annotation),
+      regions (tl::nullopt)
   {}
 
   void go (HIR::Pattern &pattern) { pattern.accept_vis (*this); }
@@ -73,9 +74,9 @@ public:
 				   (is_mut) ? Mutability::Mut : Mutability::Imm,
 				   TyTy::Region::make_anonymous ()));
 	if (init.has_value ())
-		{
-			// push_tmp_assignment (borrow_place (init.value ()));
-		}
+	  {
+	    // push_tmp_assignment (borrow_place (init.value ()));
+	  }
       }
     else
       {
@@ -112,6 +113,7 @@ public:
     pattern.get_referenced_pattern ()->accept_vis (*this);
   }
 
+  // Done
   void visit (HIR::SlicePattern &pattern) override
   {
     SavedState saved (this);
@@ -127,6 +129,8 @@ public:
     type_annotation = type_annotation.map ([&] (TyTy::BaseType *ty) {
       return ty->as<TyTy::SliceType> ()->get_element_type ();
     });
+
+    // Regions are unchnaged.
 
     for (auto &item : pattern.get_items ())
       {
@@ -158,10 +162,6 @@ public:
 	    case HIR::StructPatternField::TUPLE_PAT: {
 	      auto tuple
 		= static_cast<HIR::StructPatternFieldTuplePat *> (field.get ());
-
-	      // init = ctx.place_db.lookup_or_add_path (
-	      // Place::FIELD, lookup_type (*tuple->get_tuple_pattern ()),
-	      // saved.init.value (), tuple->get_index ());
 
 	      init = init.map ([&] (PlaceId id) {
 		return ctx.place_db.lookup_or_add_path (
@@ -221,14 +221,16 @@ public:
       }
   }
 
+  // Done.
   void visit_tuple_fields (std::vector<std::unique_ptr<HIR::Pattern>> &fields,
 			   SavedState &saved, size_t &index)
   {
     for (auto &item : fields)
       {
+	auto type = lookup_type (*item);
+
 	init = init.map ([&] (PlaceId id) {
-	  return ctx.place_db.lookup_or_add_path (Place::FIELD,
-						  lookup_type (*item), id,
+	  return ctx.place_db.lookup_or_add_path (Place::FIELD, type, id,
 						  index);
 	});
 
@@ -239,10 +241,18 @@ public:
 	    .get_tyty ();
 	});
 
+	regions = regions.map ([&] (FreeRegions regs) {
+	  return bind_regions (TyTy::VarianceAnalysis::query_type_regions (
+				 type),
+			       regs);
+	});
+
 	item->accept_vis (*this);
 	index++;
       }
   }
+
+  // Done.
   void visit (HIR::TuplePattern &pattern) override
   {
     SavedState saved (this);
@@ -275,9 +285,19 @@ public:
       }
     init = saved.init;
   }
+
   void visit (HIR::TupleStructPattern &pattern) override
   {
     SavedState saved (this);
+
+    type_annotation = tl::nullopt;
+
+    auto type = lookup_type (pattern);
+
+    regions = regions.map ([&] (FreeRegions regs) {
+      return bind_regions (TyTy::VarianceAnalysis::query_type_regions (type),
+			   regs);
+    });
 
     size_t index = 0;
     switch (pattern.get_items ()->get_item_type ())
@@ -286,9 +306,8 @@ public:
 	  auto &items
 	    = static_cast<HIR::TupleStructItemsRange &> (*pattern.get_items ());
 
-	  auto tyty = ctx.place_db[init.value ()].tyty;
-	  rust_assert (tyty->get_kind () == TyTy::ADT);
-	  auto adt_ty = static_cast<TyTy::ADTType *> (tyty);
+	  rust_assert (type->get_kind () == TyTy::ADT);
+	  auto adt_ty = static_cast<TyTy::ADTType *> (type);
 	  rust_assert (adt_ty->is_tuple_struct ());
 
 	  auto skipped = adt_ty->get_variants ().at (0)->get_fields ().size ()

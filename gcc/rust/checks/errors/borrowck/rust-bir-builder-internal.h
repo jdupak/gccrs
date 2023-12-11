@@ -41,68 +41,6 @@ public:
   Polonius::Origin get_next_region () { return next_region++; }
 };
 
-// class Renumber : public TyVisitor
-// {
-//   RenumberCtx &ctx;
-//   std::vector<BIR::FreeRegion> regions;
-//
-//   bool nested_ref = false;
-//
-// public:
-//   void visit_region (Region region, Variance variance = Variance::covariant
-//   ())
-//   {
-//     if (region.is_free ())
-//       {
-// 	regions.push_back ({variance, ctx.get_next_region ()});
-//       }
-//     // TODO
-//   }
-//
-//   void visit (InferType &type) override {}
-//   void visit (ADTType &type) override
-//   {
-//     auto n = type.get_num_lifetime_params ();
-//     for (size_t i = 0; i < n; i++)
-//       {
-// 	// regions.push_back ({Variance::covariant (), ctx.get_next_region ()});
-//       }
-//   }
-//   void visit (TupleType &type) override {}
-//   void visit (FnType &type) override {}
-//   void visit (FnPtr &type) override {}
-//
-//   void visit (ErrorType &type) override {}
-//   void visit (CharType &type) override {}
-//   void visit (ReferenceType &type) override
-//   {
-//     visit_region (type.get_region (),
-// 		  nested_ref ? Variance::bivariant () : Variance::covariant ());
-//     auto save_nested_ref = nested_ref;
-//     nested_ref = true;
-//     type.get_base ()->accept_vis (*this);
-//     nested_ref = save_nested_ref;
-//   }
-//   void visit (ParamType &type) override {}
-//   void visit (StrType &type) override {}
-//   void visit (NeverType &type) override {}
-//   void visit (PlaceholderType &type) override {}
-//   void visit (ProjectionType &type) override {}
-//   void visit (DynamicObjectType &type) override {}
-//   void visit (ClosureType &type) override {}
-//
-//   // Do not contain regions.
-//   void visit (PointerType &type) override {}
-//   void visit (ArrayType &type) override {}
-//   void visit (SliceType &type) override {}
-//   void visit (BoolType &type) override {}
-//   void visit (IntType &type) override {}
-//   void visit (UintType &type) override {}
-//   void visit (FloatType &type) override {}
-//   void visit (USizeType &type) override {}
-//   void visit (ISizeType &type) override {}
-// };
-
 } // namespace TyTy
 
 namespace BIR {

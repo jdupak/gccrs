@@ -48,6 +48,7 @@ class FactCollector : public Visitor
   uint32_t current_stmt = 0;
   PlaceId lhs = INVALID_PLACE;
 
+  // PlaceDB is const in this phase, so this is used to generate fresh regions.
   FreeRegion next_fresh_region;
 
   FreeRegion get_next_free_region () { return next_fresh_region++; }
@@ -83,6 +84,16 @@ class FactCollector : public Visitor
     return free_regions;
   }
 
+  FreeRegions make_fresh_regions (size_t size)
+  {
+    std::vector<FreeRegion> free_regions;
+    for (size_t i = 0; i < size; i++)
+      {
+	free_regions.push_back (get_next_free_region ());
+      }
+    return FreeRegions (std::move (free_regions));
+  }
+
 public:
   static Polonius::Facts collect (const Function &func)
   {
@@ -102,16 +113,6 @@ protected: // Constructor and destructor.
 
   ~FactCollector () = default;
 
-  FreeRegions make_fresh_regions (size_t size)
-  {
-    std::vector<FreeRegion> free_regions;
-    for (size_t i = 0; i < size; i++)
-      {
-	free_regions.push_back (get_next_free_region ());
-      }
-    return FreeRegions (std::move (free_regions));
-  }
-
 protected: // Main collection entry points (for different categories).
   void init_universal_regions (
     FreeRegions universal_regions,
@@ -130,6 +131,7 @@ protected: // Main collection entry points (for different categories).
     for (PlaceId place_id = 0; place_id < place_db.size (); ++place_id)
       {
 	auto &place = place_db[place_id];
+
 	switch (place.kind)
 	  {
 	  case Place::VARIABLE:
@@ -169,11 +171,9 @@ protected: // Main collection entry points (for different categories).
     rust_debug ("\tSanitize deref of %s", base.tyty->as_string ().c_str ());
 
     std::vector<Polonius::Origin> regions;
-    std::transform (base.regions.begin () + 1, base.regions.end (),
-		    std::back_inserter (regions),
-		    [] (FreeRegion r) { return r; });
-    FreeRegions f (std::move (regions));
-    push_subset (place.tyty, place.regions, f);
+    regions.insert (regions.end (), base.regions.begin () + 1,
+		    base.regions.end ());
+    push_subset (place.tyty, place.regions, FreeRegions (std::move (regions)));
   }
 
   void sanizite_field (PlaceId place_id)
@@ -190,15 +190,8 @@ protected: // Main collection entry points (for different categories).
       base.tyty->as<TyTy::ADTType> (), 0, place.variable_or_field_index,
       base.regions); // FIXME
     FreeRegions f (std::move (r));
-    push_subset (place.tyty, place.regions, f);
+    push_subset (place.tyty, f, place.regions);
   }
-
-  void sanitize_nested_ref (PlaceId place_id)
-  {
-    // TODO
-  }
-
-  void sanitize_path (PlaceId child, PlaceId parent) {}
 
   void visit_statemensts ()
   {
@@ -431,6 +424,11 @@ protected: // Statement visitors.
       }
     else if (auto ref = place.tyty->try_as<TyTy::ReferenceType> ())
       {
+	for (auto &region : place.regions)
+	  {
+	    if (region != place.regions[0])
+	      push_subset (region, place.regions[0]);
+	  }
       }
   }
 
