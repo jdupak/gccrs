@@ -413,8 +413,7 @@ TypeCoercionRules::coerce_unsized (TyTy::BaseType *source,
 	  TyTy::ReferenceType *reborrow
 	    = new TyTy::ReferenceType (source->get_ref (),
 				       TyTy::TyVar (result->get_ref ()),
-				       expected_mutability,
-				       TyTy::Region::make_anonymous ());
+				       expected_mutability, TyTy::Region::make_anonymous ());
 
 	  Adjustment::AdjustmentType borrow_type
 	    = expected_mutability == Mutability::Imm ? Adjustment::IMM_REF

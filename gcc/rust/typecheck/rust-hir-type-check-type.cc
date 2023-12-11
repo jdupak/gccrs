@@ -895,9 +895,10 @@ TypeResolveGenericParam::visit (HIR::TypeParam &param)
 }
 
 void
-ResolveWhereClauseItem::Resolve (HIR::WhereClauseItem &item)
+ResolveWhereClauseItem::Resolve (HIR::WhereClauseItem &item,
+				 TyTy::RegionConstraints &region_constraints)
 {
-  ResolveWhereClauseItem resolver;
+  ResolveWhereClauseItem resolver (region_constraints);
 
   auto binder_pin = resolver.context->push_lifetime_binder ();
 
@@ -915,7 +916,23 @@ ResolveWhereClauseItem::Resolve (HIR::WhereClauseItem &item)
 
 void
 ResolveWhereClauseItem::visit (HIR::LifetimeWhereClauseItem &item)
-{}
+{
+  auto lhs = context->lookup_and_resolve_lifetime (item.get_lifetime ());
+  if (!lhs.has_value ())
+    {
+      rust_error_at (UNKNOWN_LOCATION, "failed to resolve lifetime");
+    }
+  for (auto &lifetime : item.get_lifetime_bounds ())
+    {
+      auto rhs_i = context->lookup_and_resolve_lifetime (lifetime);
+      if (!rhs_i.has_value ())
+	{
+	  rust_error_at (UNKNOWN_LOCATION, "failed to resolve lifetime");
+	}
+      region_constraints.region_region.emplace_back (lhs.value (),
+						     rhs_i.value ());
+    }
+}
 
 void
 ResolveWhereClauseItem::visit (HIR::TypeBoundWhereClauseItem &item)
@@ -947,6 +964,21 @@ ResolveWhereClauseItem::visit (HIR::TypeBoundWhereClauseItem &item)
 					  binding_type_path.get ());
 	    if (!predicate.is_error ())
 	      specified_bounds.push_back (std::move (predicate));
+	  }
+	  break;
+	  case HIR::TypeParamBound::BoundType::LIFETIME: {
+	    if (auto param = binding->try_as<TyTy::ParamType> ())
+	      {
+		auto *b = static_cast<HIR::Lifetime *> (bound.get ());
+		auto region = context->lookup_and_resolve_lifetime (*b);
+		if (!region.has_value ())
+		  {
+		    rust_error_at (UNKNOWN_LOCATION,
+				   "failed to resolve lifetime");
+		  }
+		region_constraints.type_region.emplace_back (param,
+							     region.value ());
+	      }
 	  }
 	  break;
 
