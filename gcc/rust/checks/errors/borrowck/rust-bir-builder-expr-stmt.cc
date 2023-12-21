@@ -540,16 +540,19 @@ ExprStmtBuilder::visit (HIR::IfExprConseqElse &expr)
   if (else_bb.is_goto_terminated () && else_bb.successors.empty ())
     add_jump (else_end_bb, final_start_bb);
 }
+
 void
 ExprStmtBuilder::visit (HIR::IfLetExpr &expr)
 {
   rust_sorry_at (expr.get_locus (), "if let expressions are not supported");
 }
+
 void
 ExprStmtBuilder::visit (HIR::IfLetExprConseqElse &expr)
 {
   rust_sorry_at (expr.get_locus (), "if let expressions are not supported");
 }
+
 void
 ExprStmtBuilder::visit (HIR::MatchExpr &expr)
 {
@@ -661,6 +664,5 @@ ExprStmtBuilder::visit (HIR::ExprStmt &stmt)
 {
   (void) visit_expr (*stmt.get_expr ());
 }
-
 } // namespace BIR
 } // namespace Rust

@@ -561,15 +561,18 @@ protected: // Statement visitors.
       issue_read (init_value);
     // TODO: issue write? Probably not.
   }
+
   void visit (const Operator<1> &expr) override
   {
     issue_read (expr.get_operand<0> ());
   }
+
   void visit (const Operator<2> &expr) override
   {
     issue_read (expr.get_operand<0> ());
     issue_read (expr.get_operand<1> ());
   }
+
   void visit (const BorrowExpr &expr) override
   {
     rust_debug ("\t_%u = BorrowExpr(_%u)", lhs - 1, expr.get_place () - 1);
@@ -632,7 +635,6 @@ protected: // Statement visitors.
     issue_jumps ();
   }
 }; // namespace BIR
-
 } // namespace BIR
 } // namespace Rust
 
