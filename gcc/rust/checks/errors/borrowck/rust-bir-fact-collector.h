@@ -579,6 +579,12 @@ protected: // Statement visitors.
 
     facts.loan_issued_at.emplace_back (expr.get_origin (), expr.get_loan (),
 				       get_current_point_mid ());
+
+    auto loan_region = ref_place.regions[0];
+    for (auto &region : base_place.regions)
+      {
+	push_subset (region, loan_region);
+      }
   }
 
   void visit (const Assignment &expr) override
