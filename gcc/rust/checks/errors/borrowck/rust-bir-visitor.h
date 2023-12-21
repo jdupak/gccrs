@@ -28,6 +28,7 @@ template <unsigned N> class Operator;
 class Assignment;
 class BorrowExpr;
 class CallExpr;
+class UserTypeAscription;
 
 class Visitor
 {

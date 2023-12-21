@@ -51,6 +51,8 @@ class FactCollector : public Visitor
   // PlaceDB is const in this phase, so this is used to generate fresh regions.
   FreeRegion next_fresh_region;
 
+  std::vector<Polonius::Point> cfg_points_all;
+
   FreeRegion get_next_free_region () { return next_fresh_region++; }
 
   FreeRegions bind_regions (std::vector<TyTy::Region> regions,
@@ -100,8 +102,9 @@ public:
     FactCollector collector (func);
     collector.init_universal_regions (func.universal_regions,
 				      func.universal_region_bounds);
-    collector.visit_places ();
+
     collector.visit_statemensts ();
+    collector.visit_places ();
     return std::move (collector.facts);
   }
 
@@ -145,12 +148,12 @@ protected: // Main collection entry points (for different categories).
 	    break;
 	  case Place::FIELD:
 	    sanizite_field (place_id);
-	    facts.path_is_var.emplace_back (place_id, place_id);
+	    facts.child_path.emplace_back (place_id, place.path.parent);
 	    break;
 	  case Place::INDEX:
-	    push_subset (place.tyty, place.regions,
-			 place_db[place.path.parent].regions);
-	    facts.path_is_var.emplace_back (place_id, place_id);
+	    push_subset_all (place.tyty, place.regions,
+			     place_db[place.path.parent].regions);
+	    facts.child_path.emplace_back (place_id, place.path.parent);
 	    break;
 	  case Place::DEREF:
 	    sanitize_deref (place_id);
@@ -173,7 +176,8 @@ protected: // Main collection entry points (for different categories).
     std::vector<Polonius::Origin> regions;
     regions.insert (regions.end (), base.regions.begin () + 1,
 		    base.regions.end ());
-    push_subset (place.tyty, place.regions, FreeRegions (std::move (regions)));
+    push_subset_all (place.tyty, place.regions,
+		     FreeRegions (std::move (regions)));
   }
 
   void sanizite_field (PlaceId place_id)
@@ -190,7 +194,7 @@ protected: // Main collection entry points (for different categories).
       base.tyty->as<TyTy::ADTType> (), 0, place.variable_or_field_index,
       base.regions); // FIXME
     FreeRegions f (std::move (r));
-    push_subset (place.tyty, f, place.regions);
+    push_subset_all (place.tyty, place.regions, f);
   }
 
   void visit_statemensts ()
@@ -203,6 +207,9 @@ protected: // Main collection entry points (for different categories).
 	for (current_stmt = 0; current_stmt < bb.statements.size ();
 	     ++current_stmt)
 	  {
+	    cfg_points_all.push_back (get_current_point_start ());
+	    cfg_points_all.push_back (get_current_point_mid ());
+
 	    add_stmt_to_cfg (current_bb, current_stmt);
 
 	    visit (bb.statements[current_stmt]);
@@ -263,7 +270,9 @@ protected: // Generic BIR operations.
 
     facts.path_accessed_at_base.emplace_back (place_id,
 					      get_current_point_mid ());
-    issue_var_used (place_id);
+
+    if (place.is_var ())
+      issue_var_used (place_id);
 
     if (place.is_rvalue () || !place.is_copy)
       {
@@ -313,6 +322,14 @@ protected: // Generic BIR operations.
     facts.subset_base.emplace_back (lhs, rhs, get_current_point_mid ());
   }
 
+  void push_subset_all (FreeRegion lhs, FreeRegion rhs)
+  {
+    rust_debug ("\t\tpush_subset_all: '?%u: '?%u", lhs, rhs);
+
+    for (auto point : cfg_points_all)
+      facts.subset_base.emplace_back (lhs, rhs, point);
+  }
+
   void push_subset (Variance variance, FreeRegion lhs, FreeRegion rhs)
   {
     if (variance.is_covariant ())
@@ -330,6 +347,23 @@ protected: // Generic BIR operations.
       }
   }
 
+  void push_subset_all (Variance variance, FreeRegion lhs, FreeRegion rhs)
+  {
+    if (variance.is_covariant ())
+      {
+	push_subset_all (lhs, rhs);
+      }
+    else if (variance.is_contravariant ())
+      {
+	push_subset_all (rhs, lhs);
+      }
+    else if (variance.is_invariant ())
+      {
+	push_subset_all (lhs, rhs);
+	push_subset_all (rhs, lhs);
+      }
+  }
+
   void push_subset (TyTy::BaseType *type, FreeRegions lhs, FreeRegions rhs)
   {
     auto variances = TyTy::VarianceAnalysis::query_type_variances (type);
@@ -338,6 +372,17 @@ protected: // Generic BIR operations.
     for (size_t i = 0; i < lhs.size (); ++i)
       {
 	push_subset (variances[i], lhs[i], rhs[i]);
+      }
+  }
+
+  void push_subset_all (TyTy::BaseType *type, FreeRegions lhs, FreeRegions rhs)
+  {
+    auto variances = TyTy::VarianceAnalysis::query_type_variances (type);
+    rust_assert (lhs.size () == rhs.size ());
+    rust_assert (lhs.size () == variances.size ());
+    for (size_t i = 0; i < lhs.size (); ++i)
+      {
+	push_subset_all (variances[i], lhs[i], rhs[i]);
       }
   }
 
@@ -350,8 +395,19 @@ protected: // Generic BIR operations.
 
     for (size_t i = 0; i < free_regions.size (); ++i)
       {
-	push_subset (variances[i], free_regions[i],
-		     {Polonius::Origin (user_regions[i].get_index ())});
+	if (user_regions[i].is_named ())
+	  {
+	    push_subset (variances[i], free_regions[i],
+			 {Polonius::Origin (user_regions[i].get_index ())});
+	  }
+	else if (user_regions[i].is_anonymous ())
+	  {
+	    // IGNORE
+	  }
+	else
+	  {
+	    rust_internal_error_at (UNKNOWN_LOCATION, "Unexpected region type");
+	  }
       }
   }
 
@@ -383,6 +439,7 @@ protected: // Statement visitors.
 	issue_jumps ();
 	break;
       case Statement::Kind::RETURN:
+	issue_var_used (RETURN_VALUE_PLACE);
 	break;
       case Statement::Kind::STORAGE_DEAD:
 	issue_write (stmt.get_place ());

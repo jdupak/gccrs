@@ -17,7 +17,7 @@
 // <http://www.gnu.org/licenses/>.
 
 mod gccrs_ffi;
-use polonius_engine::{AllFacts, Atom, FactTypes, Output};
+use polonius_engine::{AllFacts, Atom, FactTypes, Output };
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -85,47 +85,55 @@ fn print_point(point: GccrsAtom) {
     let mid = val % 2 == 1;
     let bb = val >> 16;
     let stmt = (val >> 1) & 0xFFFF;
-    print!("{}(bb{}[{}])", if mid { "Mid" } else { "Start" }, bb, stmt);
+    eprint!("{}(bb{}[{}])", if mid { "Mid" } else { "Start" }, bb, stmt);
 }
 
 /// Run the polonius analysis on the given facts (for a single function).
 /// Right now, results are only printed and not propagated back to the gccrs.
 #[no_mangle]
-pub unsafe extern "C" fn polonius_run(input: gccrs_ffi::FactsView, dump_enabled: bool) {
+pub unsafe extern "C" fn polonius_run(input: gccrs_ffi::FactsView, dump_enabled: bool) -> gccrs_ffi::Output {
     let facts = AllFacts::<GccrsFacts>::from(input);
     let output = Output::compute(&facts, polonius_engine::Algorithm::Naive, dump_enabled);
 
+if dump_enabled {
     // FIXME: Temporary output
-    println!("Polonius analysis completed. Results:");
-    println!("Errors: {:#?}", output.errors);
-    println!("Subset error: {:#?}", output.subset_errors);
-    println!("Move error: {:#?}", output.move_errors);
+    eprintln!("Polonius analysis completed. Results:");
+    eprintln!("Errors: {:#?}", output.errors);
+    eprintln!("Subset error: {:#?}", output.subset_errors);
+    eprintln!("Move error: {:#?}", output.move_errors);
 
-    println!("Subsets:");
+    eprintln!("Subsets:");
     let mut subset_vec: Vec<_> = output.subset.iter().collect();
     subset_vec.sort_by_key(|&(point, _)| point);
     for (point, subsets) in subset_vec {
         print_point(*point);
-        println!(": {{");
+        eprintln!(": {{");
         for (&lhs, rhss) in subsets {
             for &rhs in rhss {
-                println!("    {} <= {}", usize::from(lhs), usize::from(rhs));
+                eprintln!("    {} <= {}", usize::from(lhs), usize::from(rhs));
             }
         }
-        println!("}}");
+        eprintln!("}}");
     }
-    println!("Subset anywhere: {:#?}", output.subset_anywhere);
+    eprintln!("Subset anywhere: {:#?}", output.subset_anywhere);
 
     // Print origin live on entry
-    println!("Origin live on entry:");
+    eprintln!("Origin live on entry:");
     let mut origin_vec: Vec<_> = output.origin_live_on_entry.iter().collect();
     origin_vec.sort_by_key(|&(point, _)| point);
     for (point, origins) in origin_vec {
         print_point(*point);
-        println!(": {{");
+        eprintln!(": {{");
         for &origin in origins {
-            println!("    {}", usize::from(origin));
+            eprintln!("    {}", usize::from(origin));
         }
-        println!("}}");
+        eprintln!("}}");
     }
+    }
+
+    return gccrs_ffi::Output {
+        loan_errors: output.errors.len() > 0,
+        subset_errors: output.subset_errors.len() > 0,
+        move_errors: output.move_errors.len() > 0,
+    };
 }

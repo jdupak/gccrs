@@ -84,6 +84,15 @@ pub struct FactsView {
     pub placeholder: Slice<Pair<Origin, Loan>>,
 }
 
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct Output {
+    pub loan_errors: bool,
+    pub subset_errors: bool,
+    pub move_errors: bool,
+}
+
 // GENERATED END ==============================================================
 
 impl<T1, T2> Into<(GccrsAtom, GccrsAtom)> for Pair<T1, T2>

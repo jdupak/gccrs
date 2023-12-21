@@ -189,6 +189,13 @@ Dump::visit (const Statement &stmt)
       visit_place (stmt.get_place ());
       stream << ")";
       break;
+    case Statement::Kind::USER_TYPE_ASCRIPTION:
+      visit_place (stmt.get_place ());
+      stream << " = ";
+      stream << "UserTypeAscription(";
+      stream << get_tyty_name (func.place_db[stmt.get_place ()].tyty);
+      stream << ")";
+      break;
     }
   statement_place = INVALID_PLACE;
 }

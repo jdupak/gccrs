@@ -304,8 +304,10 @@ private:
 	    {
 	      if (it->second.scope <= ITEM_SCOPE)
 		{
+		  // It is useful to have the static lifetime and named
+		  // lifetimed disjoint so we add the +1 here.
 		  return (is_body)
-			   ? TyTy::Region::make_named (it->second.index)
+			   ? TyTy::Region::make_named (it->second.index + 1)
 			   : TyTy::Region::make_early_bound (it->second.index);
 		}
 	      else
