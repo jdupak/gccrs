@@ -874,6 +874,15 @@ ResolveWhereClauseItem::visit (HIR::LifetimeWhereClauseItem &item)
 void
 ResolveWhereClauseItem::visit (HIR::TypeBoundWhereClauseItem &item)
 {
+  auto binder_pin = context->push_lifetime_binder ();
+  if (item.has_for_lifetimes ())
+    {
+      for (auto &lifetime_param : item.get_for_lifetimes ())
+	{
+	  context->intern_and_insert_lifetime (lifetime_param.get_lifetime ());
+	}
+    }
+
   auto &binding_type_path = item.get_bound_type ();
   TyTy::BaseType *binding = TypeCheckType::Resolve (binding_type_path.get ());
 
