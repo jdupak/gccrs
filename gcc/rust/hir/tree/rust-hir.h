@@ -178,7 +178,7 @@ public:
 
   virtual std::string as_string () const = 0;
 
-  virtual void accept_vis (HIRStmtVisitor &vis) = 0;
+  virtual void accept_vis (HIRStmtVisitor &eis) = 0;
 
   virtual location_t get_locus () const = 0;
 

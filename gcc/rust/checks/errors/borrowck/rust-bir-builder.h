@@ -57,6 +57,7 @@ public:
       std::move (ctx.basic_blocks),
       std::move (ctx.fn_free_regions),
       std::move (universal_region_bounds),
+      std::move (ctx.loans),
     };
   }
 
@@ -144,7 +145,7 @@ private:
     translated = ExprStmtBuilder (ctx).build (body, RETURN_VALUE_PLACE);
     if (!ctx.get_current_bb ().is_terminated ())
       {
-	if (lookup_type (body)->is_unit ())
+	if (ctx.place_db[RETURN_VALUE_PLACE].tyty->is_unit ())
 	  {
 	    push_assignment (RETURN_VALUE_PLACE,
 			     ctx.place_db.get_constant (

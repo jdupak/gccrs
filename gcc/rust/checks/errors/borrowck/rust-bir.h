@@ -35,6 +35,12 @@ class AbstractExpr;
 
 using LoanId = uint32_t;
 
+struct Loan
+{
+  Mutability mutability;
+  PlaceId place;
+};
+
 /**
  * Top-level entity of the Borrow-checker IR (BIR).
  * It represents a single function (method, closure, etc.), which is the
@@ -47,6 +53,7 @@ struct Function
   std::vector<BasicBlock> basic_blocks;
   FreeRegions universal_regions;
   std::vector<std::pair<FreeRegion, FreeRegion>> universal_region_bounds;
+  std::vector<Loan> loans;
 };
 
 /** Single statement of BIR. */
@@ -62,6 +69,7 @@ public:
     STORAGE_DEAD,	  // StorageDead(<place>)
     STORAGE_LIVE,	  // StorageLive(<place>)
     USER_TYPE_ASCRIPTION, // UserTypeAscription(<place>, <tyty>)
+    FAKE_READ,
   };
 
   // union
@@ -255,8 +263,7 @@ class CallExpr final : public VisitableImpl<AbstractExpr, CallExpr>
 
 public:
   explicit CallExpr (PlaceId callable, std::vector<PlaceId> &&arguments)
-    : VisitableImpl (ExprKind::CALL), arguments (arguments),
-      callable (callable)
+    : VisitableImpl (ExprKind::CALL), arguments (arguments), callable (callable)
   {}
 
 public:

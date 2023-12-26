@@ -98,6 +98,8 @@ struct BuilderContext
 
   FreeRegions fn_free_regions{{}};
 
+  std::vector<Loan> loans;
+
 public:
   BuilderContext ()
     : tyctx (*Resolver::TypeCheckContext::get ()),
@@ -177,12 +179,25 @@ protected:
     ctx.place_db.pop_scope ();
   }
 
+  bool intersection_empty (std::vector<PlaceId> &a, std::vector<PlaceId> &b)
+  {
+    for (auto &place : a)
+      {
+	if (std::find (b.begin (), b.end (), place) != b.end ())
+	  return false;
+      }
+    return true;
+  }
+
   void unwind_until (ScopeId final_scope)
   {
     auto current_scope_id = ctx.place_db.get_current_scope_id ();
     while (current_scope_id != final_scope)
       {
 	auto &scope = ctx.place_db.get_scope (current_scope_id);
+
+	// TODO: Perform stable toposort based on `borrowed_by`.
+
 	std::for_each (scope.locals.rbegin (), scope.locals.rend (),
 		       [&] (PlaceId place) { push_storage_dead (place); });
 	current_scope_id = scope.parent;
@@ -229,8 +244,6 @@ protected: // Helpers to add BIR statements
 
   void push_assignment (PlaceId lhs, PlaceId rhs)
   {
-    auto &lhs_place = ctx.place_db[lhs];
-    auto &rhs_place = ctx.place_db[rhs];
     push_assignment (lhs, new Assignment (rhs));
   }
 
@@ -281,11 +294,21 @@ protected: // Helpers to add BIR statements
       Statement::Kind::USER_TYPE_ASCRIPTION, place, ty);
   }
 
-  BorrowExpr *borrow_place (PlaceId place)
+  void push_fake_read (PlaceId place)
+  {
+    ctx.get_current_bb ().statements.emplace_back (Statement::Kind::FAKE_READ,
+						   place);
+  }
+
+  BorrowExpr *borrow_place (PlaceId place_id)
   {
     // FIXME
-    return new BorrowExpr (place, ctx.next_loan_id++,
+    auto loan = ctx.next_loan_id++;
+    auto &place = ctx.place_db[place_id];
+    place.borrowed_by.push_back (loan);
+    return new BorrowExpr (place_id, loan,
 			   ctx.place_db.get_next_free_region ());
+
   }
 
   PlaceId move_place (PlaceId arg)
@@ -526,6 +549,8 @@ protected:
       {
 	// Return place is already allocated, no need to defer assignment.
 	push_assignment (expr_return_place, place);
+	if (ctx.place_db[expr_return_place].is_lvalue ())
+	  push_fake_read (expr_return_place);
       }
     else
       {

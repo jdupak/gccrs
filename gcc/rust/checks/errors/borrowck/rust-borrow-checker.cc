@@ -37,7 +37,7 @@ mkdir_wrapped (const std::string &dirname)
 #elif __APPLE__
   ret = mkdir (dirname.c_str (), 0775);
 #endif
-  (void) ret;
+  rust_assert (ret == 0 || errno == EEXIST);
 }
 
 void
@@ -149,6 +149,14 @@ BorrowChecker::go (HIR::Crate &crate)
 	  facts.dump_known_placeholder_subset (known_placeholder_subset_file);
 	  auto path_moved_at_base_file = make_fact_file ("path_moved_at_base");
 	  facts.dump_path_moved_at_base (path_moved_at_base_file);
+	  auto path_accessed_at_base_file
+	    = make_fact_file ("path_accessed_at_base");
+	  facts.dump_path_accessed_at_base (path_accessed_at_base_file);
+	  auto path_assigned_at_base_file
+	    = make_fact_file ("path_assigned_at_base");
+	  facts.dump_path_assigned_at_base (path_assigned_at_base_file);
+	  auto placeholder_file = make_fact_file ("placeholder");
+	  facts.dump_placeholder (placeholder_file);
 	}
 
       auto result

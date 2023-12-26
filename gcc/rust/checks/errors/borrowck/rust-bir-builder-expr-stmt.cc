@@ -120,7 +120,13 @@ ExprStmtBuilder::visit (HIR::BorrowExpr &expr)
 {
   auto operand = visit_expr (*expr.get_expr ());
   // BorrowExpr cannot be annotated with lifetime.
-  return_expr (borrow_place (operand), lookup_type (expr));
+  auto loan = borrow_place (operand);
+  push_tmp_assignment (loan, lookup_type (expr));
+  ctx.loans.push_back ({ctx.place_db[translated]
+			  .tyty->as<const TyTy::ReferenceType> ()
+			  ->mutability (),
+			translated}); // TODO: refactor into borrow_place
+  return_place (translated);
 }
 
 void
@@ -633,9 +639,6 @@ ExprStmtBuilder::visit (HIR::LetStmt &stmt)
   tl::optional<PlaceId> init;
   tl::optional<TyTy::BaseType *> type_annotation;
 
-  if (stmt.has_init_expr ())
-    init = visit_expr (*stmt.get_init_expr ());
-
   if (stmt.has_type ())
     type_annotation = lookup_type (*stmt.get_type ());
 
@@ -654,6 +657,9 @@ ExprStmtBuilder::visit (HIR::LetStmt &stmt)
     }
   else
     {
+      if (stmt.has_init_expr ())
+	init = visit_expr (*stmt.get_init_expr ());
+
       PatternBindingBuilder (ctx, init, type_annotation)
 	.go (*stmt.get_pattern ());
     }

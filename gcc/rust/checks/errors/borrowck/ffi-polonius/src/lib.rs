@@ -84,7 +84,7 @@ fn print_point(point: GccrsAtom) {
     let val: usize = point.into();
     let mid = val % 2 == 1;
     let bb = val >> 16;
-    let stmt = (val >> 1) & 0xFFFF;
+    let stmt = (val >> 1) & ((1 << 15) - 1);
     eprint!("{}(bb{}[{}])", if mid { "Mid" } else { "Start" }, bb, stmt);
 }
 
@@ -100,7 +100,11 @@ if dump_enabled {
     eprintln!("Polonius analysis completed. Results:");
     eprintln!("Errors: {:#?}", output.errors);
     eprintln!("Subset error: {:#?}", output.subset_errors);
-    eprintln!("Move error: {:#?}", output.move_errors);
+    eprintln!("Move error:");
+    for (&point, moves) in &output.move_errors {
+        print_point(point);
+        eprintln!("{:?}", moves);
+    }
 
     eprintln!("Subsets:");
     let mut subset_vec: Vec<_> = output.subset.iter().collect();
@@ -129,7 +133,19 @@ if dump_enabled {
         }
         eprintln!("}}");
     }
+
+    eprintln!("Origin contains loan at:");
+    let mut origin_vec: Vec<_> = output.origin_contains_loan_at.iter().collect();
+    origin_vec.sort_by_key(|&(point, _)| point);
+    for (point, origins) in origin_vec {
+        print_point(*point);
+        eprintln!(": {{");
+        for (&origin, loans) in origins {
+            eprintln!("    {}:{:?}", usize::from(origin), loans.iter().map(|&e| usize::from(e)).collect::<Vec<_>>());
+        }
+        eprintln!("}}");
     }
+}
 
     return gccrs_ffi::Output {
         loan_errors: output.errors.len() > 0,

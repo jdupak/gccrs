@@ -39,6 +39,7 @@ static constexpr PlaceId RETURN_VALUE_PLACE = 1;
 static constexpr PlaceId FIRST_VARIABLE_PLACE = RETURN_VALUE_PLACE;
 
 using Variance = TyTy::VarianceAnalysis::Variance;
+using LoanId = uint32_t;
 
 /**
  * Representation of lvalues and constants in BIR.
@@ -76,6 +77,7 @@ struct Place
   bool has_drop = false;
   TyTy::BaseType *tyty;
   FreeRegions regions{{}};
+  std::vector<LoanId> borrowed_by{};
 
 public:
   Place (Kind kind, uint32_t variable_or_field_index, const Path &path,
@@ -121,6 +123,19 @@ public:
 	rust_assert (false);
       }
   }
+
+  WARN_UNUSED_RESULT bool is_indirect () const
+  {
+    // TODO: probably incomplete, check other projections
+    switch (tyty->get_kind ())
+      {
+      case TyTy::REF:
+      case TyTy::POINTER:
+	return true;
+      default:
+	return false;
+      }
+  }
 };
 
 using ScopeId = uint32_t;
@@ -160,6 +175,9 @@ public:
 
   Place &operator[] (PlaceId id) { return places.at (id); }
   const Place &operator[] (PlaceId id) const { return places.at (id); }
+
+  decltype (places)::const_iterator begin () const { return places.begin (); }
+  decltype (places)::const_iterator end () const { return places.end (); }
 
   size_t size () const { return places.size (); }
 
