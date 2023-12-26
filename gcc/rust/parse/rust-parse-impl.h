@@ -4039,6 +4039,12 @@ Parser<ManagedTokenSource>::parse_trait_bound ()
 
   location_t locus = lexer.peek_token ()->get_locus ();
 
+  /* parse for lifetimes, if it exists (although empty for lifetimes is ok to
+   * handle this) */
+  std::vector<AST::LifetimeParam> for_lifetimes;
+  if (lexer.peek_token ()->get_id () == FOR)
+    for_lifetimes = parse_for_lifetimes ();
+
   // handle trait bound being in parentheses
   if (lexer.peek_token ()->get_id () == LEFT_PAREN)
     {
@@ -4052,12 +4058,6 @@ Parser<ManagedTokenSource>::parse_trait_bound ()
       has_question_mark = true;
       lexer.skip_token ();
     }
-
-  /* parse for lifetimes, if it exists (although empty for lifetimes is ok to
-   * handle this) */
-  std::vector<AST::LifetimeParam> for_lifetimes;
-  if (lexer.peek_token ()->get_id () == FOR)
-    for_lifetimes = parse_for_lifetimes ();
 
   // handle TypePath
   AST::TypePath type_path = parse_type_path ();
