@@ -3756,6 +3756,10 @@ Parser<ManagedTokenSource>::parse_where_clause ()
    * so won't be here */
   std::vector<std::unique_ptr<AST::WhereClauseItem>> where_clause_items;
 
+  std::vector<AST::LifetimeParam> for_lifetimes;
+  if (lexer.peek_token ()->get_id () == FOR)
+    for_lifetimes = parse_for_lifetimes ();
+
   /* HACK: where clauses end with a right curly or semicolon or equals in all
    * uses currently */
   const_TokenPtr t = lexer.peek_token ();
@@ -3763,7 +3767,7 @@ Parser<ManagedTokenSource>::parse_where_clause ()
 	 && t->get_id () != EQUAL)
     {
       std::unique_ptr<AST::WhereClauseItem> where_clause_item
-	= parse_where_clause_item ();
+	= parse_where_clause_item (for_lifetimes);
 
       if (where_clause_item == nullptr)
 	{
@@ -3791,7 +3795,8 @@ Parser<ManagedTokenSource>::parse_where_clause ()
  * commas. */
 template <typename ManagedTokenSource>
 std::unique_ptr<AST::WhereClauseItem>
-Parser<ManagedTokenSource>::parse_where_clause_item ()
+Parser<ManagedTokenSource>::parse_where_clause_item (
+  const std::vector<AST::LifetimeParam> &global_for_lifetimes)
 {
   // shitty cheat way of determining lifetime or type bound - test for
   // lifetime
@@ -3800,7 +3805,7 @@ Parser<ManagedTokenSource>::parse_where_clause_item ()
   if (t->get_id () == LIFETIME)
     return parse_lifetime_where_clause_item ();
   else
-    return parse_type_bound_where_clause_item ();
+    return parse_type_bound_where_clause_item (global_for_lifetimes);
 }
 
 // Parses a lifetime where clause item.
@@ -3834,12 +3839,10 @@ Parser<ManagedTokenSource>::parse_lifetime_where_clause_item ()
 // Parses a type bound where clause item.
 template <typename ManagedTokenSource>
 std::unique_ptr<AST::TypeBoundWhereClauseItem>
-Parser<ManagedTokenSource>::parse_type_bound_where_clause_item ()
+Parser<ManagedTokenSource>::parse_type_bound_where_clause_item (
+  const std::vector<AST::LifetimeParam> &global_for_lifetimes)
 {
-  // parse for lifetimes, if it exists
-  std::vector<AST::LifetimeParam> for_lifetimes;
-  if (lexer.peek_token ()->get_id () == FOR)
-    for_lifetimes = parse_for_lifetimes ();
+  std::vector<AST::LifetimeParam> for_lifetimes = global_for_lifetimes;
 
   std::unique_ptr<AST::Type> type = parse_type ();
   if (type == nullptr)
@@ -3851,6 +3854,13 @@ Parser<ManagedTokenSource>::parse_type_bound_where_clause_item ()
     {
       // TODO: skip after somewhere
       return nullptr;
+    }
+
+  if (lexer.peek_token ()->get_id () == FOR)
+    {
+      auto for_lifetimes_inner = parse_for_lifetimes ();
+      for_lifetimes.insert (for_lifetimes.end (), for_lifetimes_inner.begin (),
+			    for_lifetimes_inner.end ());
     }
 
   // parse type param bounds if they exist
