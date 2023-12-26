@@ -607,6 +607,12 @@ TypeCheckType::visit (HIR::TraitObjectType &type)
       HIR::TypeParamBound &b = *bound.get ();
       HIR::TraitBound &trait_bound = static_cast<HIR::TraitBound &> (b);
 
+      auto binder_pin = context->push_lifetime_binder ();
+      for (auto &lifetime_param : trait_bound.get_for_lifetimes ())
+	{
+	  context->intern_and_insert_lifetime (lifetime_param.get_lifetime ());
+	}
+
       TyTy::TypeBoundPredicate predicate = get_predicate_from_bound (
 	trait_bound.get_path (),
 	nullptr /*this will setup a PLACEHOLDER for self*/);
