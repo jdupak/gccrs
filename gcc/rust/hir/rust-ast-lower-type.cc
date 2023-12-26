@@ -596,6 +596,13 @@ ASTLowerWhereClauseItem::visit (AST::TypeBoundWhereClauseItem &item)
   // FIXME
   std::vector<HIR::LifetimeParam> for_lifetimes;
 
+  for (auto &lifetime_param : item.get_for_lifetimes ())
+    {
+      auto generic_param = ASTLowerGenericParam::translate (&lifetime_param);
+      for_lifetimes.push_back (
+	*static_cast<HIR::LifetimeParam *> (generic_param));
+    }
+
   std::unique_ptr<HIR::Type> bound_type = std::unique_ptr<HIR::Type> (
     ASTLoweringType::translate (item.get_type ().get ()));
 
