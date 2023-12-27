@@ -161,8 +161,13 @@ GenericTyVisitorCtx::process_type (ADTType &type)
       param.get_generic_param ().get_type_representation ().as_string ());
 
   for (const auto &variant : type.get_variants ())
-    for (const auto &field : variant->get_fields ())
-      add_constraints_from_ty (field->get_field_type (), V::covariant ());
+    {
+      if (variant->get_variant_type () != VariantDef::NUM)
+	{
+	  for (const auto &field : variant->get_fields ())
+	    add_constraints_from_ty (field->get_field_type (), V::covariant ());
+	}
+    }
 
   // Cleanup
   first_lifetime = 0;
