@@ -603,12 +603,6 @@ SubstitutionRef::get_region_constraints () const
   return region_constraints;
 }
 
-const RegionConstraints &
-SubstitutionRef::get_region_constraints () const
-{
-  return region_constraints;
-}
-
 SubstitutionArgumentMappings
 SubstitutionRef::get_mappings_from_generic_args (
   HIR::GenericArgs &args, const std::vector<Region> &regions)
