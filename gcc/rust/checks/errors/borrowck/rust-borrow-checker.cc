@@ -92,7 +92,7 @@ BorrowChecker::go (HIR::Crate &crate)
 			     func->get_function_name ().as_string ());
 	}
 
-      auto facts = BIR::FactCollector (bir).go ();
+      auto facts = BIR::FactCollector::collect (bir);
       Polonius::polonius_run (facts.freeze (), true);
     }
 
