@@ -221,10 +221,7 @@ public:
   const std::map<std::string, BaseType *> &get_binding_args () const;
 
   const RegionParamList &get_regions () const;
-  RegionParamList &get_mut_regions ()
-  {
-    return regions;
-  }
+  RegionParamList &get_mut_regions ();
 
   std::string as_string () const;
 
