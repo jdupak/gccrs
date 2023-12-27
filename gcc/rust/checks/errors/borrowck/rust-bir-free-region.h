@@ -1,8 +1,9 @@
 #ifndef RUST_BIR_FREE_REGION_H
 #define RUST_BIR_FREE_REGION_H
 
-namespace Rust {
 #include <polonius/rust-polonius-ffi.h>
+
+namespace Rust {
 
 using FreeRegion = size_t;
 
