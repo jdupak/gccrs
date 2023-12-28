@@ -35,7 +35,8 @@ namespace BIR {
 using PlaceId = uint32_t;
 
 static constexpr PlaceId INVALID_PLACE = 0;
-static constexpr PlaceId RETURN_VALUE_PLACE = 1;
+static constexpr PlaceId WILDCARD_PLACE = 1;
+static constexpr PlaceId RETURN_VALUE_PLACE = 2;
 static constexpr PlaceId FIRST_VARIABLE_PLACE = RETURN_VALUE_PLACE;
 
 using Variance = TyTy::VarianceAnalysis::Variance;
@@ -136,6 +137,11 @@ public:
 	return false;
       }
   }
+
+  WARN_UNUSED_RESULT bool should_be_moved () const
+  {
+    return kind == TEMPORARY || (!is_copy && kind != CONSTANT);
+  }
 };
 
 using ScopeId = uint32_t;
@@ -152,6 +158,12 @@ struct Scope
   std::vector<PlaceId> locals;
 };
 
+struct Loan
+{
+  Mutability mutability;
+  PlaceId place;
+};
+
 /** Allocated places and keeps track of paths. */
 class PlaceDB
 {
@@ -162,12 +174,16 @@ private:
   std::vector<Scope> scopes;
   ScopeId current_scope = 0;
 
+  std::vector<Loan> loans;
+
   Polonius::Origin next_free_region = 1;
 
 public:
   PlaceDB ()
   {
     // Reserved index for invalid place.
+    places.push_back ({Place::INVALID, 0, {}, false, nullptr});
+    // Reserved index for wildcard place.
     places.push_back ({Place::INVALID, 0, {}, false, nullptr});
 
     scopes.emplace_back (); // Root scope.
@@ -180,6 +196,8 @@ public:
   decltype (places)::const_iterator end () const { return places.end (); }
 
   size_t size () const { return places.size (); }
+
+  const std::vector<Loan> &get_loans () const { return loans; }
 
   ScopeId get_current_scope_id () const { return current_scope; }
 
@@ -280,9 +298,7 @@ public:
     auto lookup = constants_lookup.find (tyty);
     if (lookup != constants_lookup.end ())
       return lookup->second;
-    Place place = {Place::CONSTANT, 0, {}, is_type_copy (tyty), tyty};
-    places.push_back (std::move (place));
-    return places.size () - 1;
+    return add_place ({Place::CONSTANT, 0, {}, is_type_copy (tyty), tyty});
   }
 
   PlaceId lookup_variable (NodeId id)
@@ -299,8 +315,23 @@ public:
     return INVALID_PLACE;
   }
 
+  LoanId add_loan (Loan &&loan)
+  {
+    LoanId id = loans.size ();
+    loans.push_back (std::forward<Loan &&> (loan));
+    PlaceId borrowed_place = loans.rbegin ()->place;
+    places[loans.rbegin ()->place].borrowed_by.push_back (id);
+    if (places[borrowed_place].kind == Place::DEREF)
+      {
+	places[places[borrowed_place].path.parent].borrowed_by.push_back (id);
+      }
+    return id;
+  }
+
   PlaceId get_var (PlaceId id) const
   {
+    if (places[id].is_var ())
+      return id;
     rust_assert (places[id].is_path ());
     PlaceId current = id;
     while (places[current].path.parent != INVALID_PLACE)
@@ -349,6 +380,7 @@ private:
     switch (ty->get_kind ())
       {
       case TyTy::REF:
+	return ty->as<TyTy::ReferenceType> ()->mutability () == Mutability::Imm;
       case TyTy::POINTER:
       case TyTy::SLICE:
       case TyTy::BOOL:
@@ -388,6 +420,24 @@ private:
       }
     rust_unreachable ();
   }
+
+  /** Check whether given place is not out-of-scope. */
+  WARN_UNUSED_RESULT bool is_in_scope (PlaceId place) const
+  {
+    for (ScopeId scope = current_scope; scope != INVALID_SCOPE;
+	 scope = scopes[scope].parent)
+      {
+	auto &scope_ref = scopes[scope];
+	if (std::find (scope_ref.locals.begin (), scope_ref.locals.end (),
+		       place)
+	    != scope_ref.locals.end ())
+	  return true;
+      }
+    return false;
+  }
+
+  /** Check if any borrower is in scope. */
+  WARN_UNUSED_RESULT bool is_borrowed (PlaceId place) const {}
 };
 
 } // namespace BIR

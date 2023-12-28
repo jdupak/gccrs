@@ -35,12 +35,6 @@ class AbstractExpr;
 
 using LoanId = uint32_t;
 
-struct Loan
-{
-  Mutability mutability;
-  PlaceId place;
-};
-
 /**
  * Top-level entity of the Borrow-checker IR (BIR).
  * It represents a single function (method, closure, etc.), which is the
@@ -53,7 +47,6 @@ struct Function
   std::vector<BasicBlock> basic_blocks;
   FreeRegions universal_regions;
   std::vector<std::pair<FreeRegion, FreeRegion>> universal_region_bounds;
-  std::vector<Loan> loans;
 };
 
 /** Single statement of BIR. */

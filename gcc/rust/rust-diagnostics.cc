@@ -183,7 +183,7 @@ rust_be_error_at (const location_t location, const std::string &errmsg)
 }
 
 void
-rust_error_at(const location_t location, const char *fmt, ...)
+rust_error_at (const location_t location, const char *fmt, ...)
 {
   va_list ap;
 

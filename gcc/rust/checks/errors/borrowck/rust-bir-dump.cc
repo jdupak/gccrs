@@ -101,7 +101,7 @@ Dump::go (bool enable_simplify_cfg)
   if (enable_simplify_cfg)
     simplify_cfg (func, bb_fold_map);
 
-  renumber_places (func, place_map);
+  // renumber_places (func, place_map);
 
   stream << "fn " << name << "(";
   print_comma_separated (stream, func.arguments, [this] (PlaceId place_id) {
@@ -196,6 +196,13 @@ Dump::visit (const Statement &stmt)
       stream << get_tyty_name (func.place_db[stmt.get_place ()].tyty);
       stream << ")";
       break;
+    case Statement::Kind::FAKE_READ:
+      stream << "FakeRead(";
+      visit_place (stmt.get_place ());
+      stream << ")";
+      break;
+    default:
+      rust_internal_error_at (UNKNOWN_LOCATION, "Unknown statement kind.");
     }
   statement_place = INVALID_PLACE;
 }
@@ -233,7 +240,10 @@ Dump::visit_place (PlaceId place_id)
       stream << "const " << get_tyty_name (place.tyty);
       break;
     case Place::INVALID:
-      stream << "_INVALID";
+      if (place_id == INVALID_PLACE)
+	stream << "_INVALID";
+      else if (place_id == WILDCARD_PLACE)
+	stream << "_";
     }
 }
 
@@ -241,7 +251,7 @@ void
 Dump::visit_move_place (PlaceId place_id)
 {
   const Place &place = func.place_db[place_id];
-  if (!place.is_constant ())
+  if (place.should_be_moved ())
     stream << "move ";
   visit_place (place_id);
 }
@@ -249,7 +259,11 @@ Dump::visit_move_place (PlaceId place_id)
 void
 Dump::visit (const BorrowExpr &expr)
 {
-  stream << "&";
+  stream << "&"
+	 << "'?" << expr.get_origin () << " ";
+  if (func.place_db.get_loans ()[expr.get_loan ()].mutability
+      == Mutability::Mut)
+    stream << "mut ";
   visit_place (expr.get_place ());
 }
 
@@ -314,14 +328,8 @@ Dump::visit (const Operator<2> &expr)
 void
 Dump::visit (const Assignment &expr)
 {
-  if (func.place_db[expr.get_rhs ()].is_rvalue ())
-    {
-      visit_move_place (expr.get_rhs ());
-    }
-  else
-    {
-      visit_place (expr.get_rhs ());
-    }
+  auto &rhs_place = func.place_db[expr.get_rhs ()];
+  visit_move_place (expr.get_rhs ());
 }
 
 std::ostream &
@@ -348,7 +356,15 @@ Dump::visit_scope (ScopeId id, size_t depth)
       indent (depth + 1) << "let _";
       stream << place_map[local] << ": "
 	     << get_tyty_name (func.place_db[local].tyty);
-      stream << ";\n";
+      stream << ";\t";
+
+      stream << "[";
+      print_comma_separated (stream,
+			     func.place_db[local].regions.get_regions (),
+			     [this] (FreeRegion region_id) {
+			       stream << "'?" << region_id;
+			     });
+      stream << "]\n";
     }
   for (auto &child : scope.children)
     {

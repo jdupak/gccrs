@@ -17,7 +17,8 @@
 // <http://www.gnu.org/licenses/>.
 
 mod gccrs_ffi;
-use polonius_engine::{AllFacts, Atom, FactTypes, Output };
+
+use polonius_engine::{AllFacts, Atom, FactTypes, Output};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -95,57 +96,59 @@ pub unsafe extern "C" fn polonius_run(input: gccrs_ffi::FactsView, dump_enabled:
     let facts = AllFacts::<GccrsFacts>::from(input);
     let output = Output::compute(&facts, polonius_engine::Algorithm::Naive, dump_enabled);
 
-if dump_enabled {
-    // FIXME: Temporary output
-    eprintln!("Polonius analysis completed. Results:");
-    eprintln!("Errors: {:#?}", output.errors);
-    eprintln!("Subset error: {:#?}", output.subset_errors);
-    eprintln!("Move error:");
-    for (&point, moves) in &output.move_errors {
-        print_point(point);
-        eprintln!("{:?}", moves);
-    }
+    if dump_enabled {
+        // FIXME: Temporary output
 
-    eprintln!("Subsets:");
-    let mut subset_vec: Vec<_> = output.subset.iter().collect();
-    subset_vec.sort_by_key(|&(point, _)| point);
-    for (point, subsets) in subset_vec {
-        print_point(*point);
-        eprintln!(": {{");
-        for (&lhs, rhss) in subsets {
-            for &rhs in rhss {
-                eprintln!("    {} <= {}", usize::from(lhs), usize::from(rhs));
+
+        eprintln!("Subsets:");
+        let mut subset_vec: Vec<_> = output.subset.iter().collect();
+        subset_vec.sort_by_key(|&(point, _)| point);
+        for (point, subsets) in subset_vec {
+            print_point(*point);
+            eprintln!(": {{");
+            for (&lhs, rhss) in subsets {
+                for &rhs in rhss {
+                    eprintln!("    {} <= {}", usize::from(lhs), usize::from(rhs));
+                }
             }
+            eprintln!("}}");
         }
-        eprintln!("}}");
-    }
-    eprintln!("Subset anywhere: {:#?}", output.subset_anywhere);
+        eprintln!("Subset anywhere: {:#?}", output.subset_anywhere);
 
-    // Print origin live on entry
-    eprintln!("Origin live on entry:");
-    let mut origin_vec: Vec<_> = output.origin_live_on_entry.iter().collect();
-    origin_vec.sort_by_key(|&(point, _)| point);
-    for (point, origins) in origin_vec {
-        print_point(*point);
-        eprintln!(": {{");
-        for &origin in origins {
-            eprintln!("    {}", usize::from(origin));
+        // Print origin live on entry
+        eprintln!("Origin live on entry:");
+        let mut origin_vec: Vec<_> = output.origin_live_on_entry.iter().collect();
+        origin_vec.sort_by_key(|&(point, _)| point);
+        for (point, origins) in origin_vec {
+            print_point(*point);
+            eprintln!(": {{");
+            for &origin in origins {
+                eprintln!("    {}", usize::from(origin));
+            }
+            eprintln!("}}");
         }
-        eprintln!("}}");
-    }
 
-    eprintln!("Origin contains loan at:");
-    let mut origin_vec: Vec<_> = output.origin_contains_loan_at.iter().collect();
-    origin_vec.sort_by_key(|&(point, _)| point);
-    for (point, origins) in origin_vec {
-        print_point(*point);
-        eprintln!(": {{");
-        for (&origin, loans) in origins {
-            eprintln!("    {}:{:?}", usize::from(origin), loans.iter().map(|&e| usize::from(e)).collect::<Vec<_>>());
+        eprintln!("Origin contains loan at:");
+        let mut origin_vec: Vec<_> = output.origin_contains_loan_at.iter().collect();
+        origin_vec.sort_by_key(|&(point, _)| point);
+        for (point, origins) in origin_vec {
+            print_point(*point);
+            eprintln!(": {{");
+            for (&origin, loans) in origins {
+                eprintln!("    {}:{:?}", usize::from(origin), loans.iter().map(|&e| usize::from(e)).collect::<Vec<_>>());
+            }
+            eprintln!("}}");
         }
-        eprintln!("}}");
+
+        eprintln!("Polonius analysis completed. Results:");
+        eprintln!("Errors: {:#?}", output.errors);
+        eprintln!("Subset error: {:#?}", output.subset_errors);
+        eprintln!("Move error:");
+        for (&point, moves) in &output.move_errors {
+            print_point(point);
+            eprintln!("{:?}", moves);
+        }
     }
-}
 
     return gccrs_ffi::Output {
         loan_errors: output.errors.len() > 0,

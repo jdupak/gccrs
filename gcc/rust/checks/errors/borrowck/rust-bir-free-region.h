@@ -18,6 +18,7 @@ public:
   size_t size () const { return regions.size (); }
   FreeRegion &operator[] (size_t i) { return regions.at (i); }
   const FreeRegion &operator[] (size_t i) const { return regions.at (i); }
+  const std::vector<FreeRegion> &get_regions () const { return regions; }
   void set_from (std::vector<Rust::Polonius::Origin> &&regions)
   {
     this->regions.clear ();

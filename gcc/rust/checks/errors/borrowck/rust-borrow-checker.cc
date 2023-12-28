@@ -78,8 +78,8 @@ BorrowChecker::go (HIR::Crate &crate)
 
   for (auto func : collector.get_functions ())
     {
-      printf ("\nChecking function %s\n",
-	      func->get_function_name ().as_string ().c_str ());
+      rust_debug_loc (func->get_locus (), "\nChecking function %s\n",
+		      func->get_function_name ().as_string ().c_str ());
 
       BIR::BuilderContext ctx;
       BIR::Builder builder (ctx);

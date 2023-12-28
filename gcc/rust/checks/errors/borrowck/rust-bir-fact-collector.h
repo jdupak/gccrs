@@ -42,7 +42,7 @@ class FactCollector : public Visitor
   // Read-only context.
   const PlaceDB &place_db;
   const std::vector<BasicBlock> &basic_blocks;
-  const std::vector<Loan> &loans;
+  const PlaceId first_local;
 
   // Collector state.
   BasicBlockId current_bb = 0;
@@ -113,7 +113,9 @@ public:
 protected: // Constructor and destructor.
   explicit FactCollector (const Function &func)
     : place_db (func.place_db), basic_blocks (func.basic_blocks),
-      loans (func.loans), next_fresh_region (place_db.peek_next_free_region ())
+      next_fresh_region (place_db.peek_next_free_region ()),
+      first_local (func.arguments.empty () ? FIRST_VARIABLE_PLACE
+					   : *func.arguments.rbegin () + 1)
   {}
 
   ~FactCollector () = default;
@@ -171,11 +173,9 @@ protected: // Main collection entry points (for different categories).
 	  }
       }
 
-    PlaceId first_local
-      = args.empty () ? FIRST_VARIABLE_PLACE : *args.rbegin () + 1;
     for (PlaceId place = first_local; place < place_db.size (); ++place)
       {
-	issue_move (place);
+	issue_move (place, true);
       }
   }
 
@@ -189,8 +189,8 @@ protected: // Main collection entry points (for different categories).
     std::vector<Polonius::Origin> regions;
     regions.insert (regions.end (), base.regions.begin () + 1,
 		    base.regions.end ());
-    push_subset_all (place.tyty, place.regions,
-		     FreeRegions (std::move (regions)));
+    // push_subset_all (place.tyty, place.regions,
+    // FreeRegions (std::move (regions)));
   }
 
   void sanizite_field (PlaceId place_id)
@@ -239,7 +239,11 @@ protected: // Statement visitor helpers
   WARN_UNUSED_RESULT static Polonius::Point
   get_point (BasicBlockId bb, uint32_t stmt, PointPosition pos)
   {
-    return (Polonius::Point) bb << 16 | stmt << 1 | (static_cast<uint8_t> (pos) & 1);
+    Polonius::Point point = 0;
+    point |= (bb << 16);
+    point |= (stmt << 1);
+    point |= (static_cast<uint8_t> (pos) & 1);
+    return point;
   }
 
   WARN_UNUSED_RESULT Polonius::Point get_current_point_start () const
@@ -254,7 +258,7 @@ protected: // Statement visitor helpers
 
   void add_stmt_to_cfg (BasicBlockId bb, uint32_t stmt)
   {
-    if (current_stmt != 0)
+    if (stmt != 0)
       {
 	facts.cfg_edge.emplace_back (get_point (bb, stmt - 1,
 						PointPosition::MID),
@@ -262,8 +266,8 @@ protected: // Statement visitor helpers
 						PointPosition::START));
       }
 
-    facts.cfg_edge.emplace_back (get_current_point_start (),
-				 get_current_point_mid ());
+    facts.cfg_edge.emplace_back (get_point (bb, stmt, PointPosition::START),
+				 get_point (bb, stmt, PointPosition::MID));
   }
 
 protected: // Generic BIR operations.
@@ -287,10 +291,11 @@ protected: // Generic BIR operations.
     if (place.is_var ())
       issue_var_used (place_id);
 
-    if (deep && (place.is_rvalue () || !place.is_copy))
+    if (deep && place.should_be_moved ())
       {
-	facts.path_moved_at_base.emplace_back (place_id,
-					       get_current_point_mid ());
+	issue_move (place_id);
+
+	// Maybe useless
 	place_db.for_each_path_segment (place_id, [&] (PlaceId id) {
 	  if (place_db[id].kind == Place::DEREF)
 	    {
@@ -299,11 +304,15 @@ protected: // Generic BIR operations.
 	    }
 	});
       }
+
+    check_read_for_conflicts (place_id);
   }
 
   void issue_write (PlaceId place_id)
   {
-    if (place_id == INVALID_PLACE)
+    rust_assert (place_id != INVALID_PLACE);
+
+    if (place_id == WILDCARD_PLACE)
       return; // Write to `_`.
 
     const auto &place = place_db[place_id];
@@ -311,16 +320,6 @@ protected: // Generic BIR operations.
 
     if (place.is_var ())
       facts.var_defined_at.emplace_back (place_id, get_current_point_mid ());
-
-    // place_db.for_each_path_segment (place_id, [&] (PlaceId id) {
-    // if (place_db[id].kind == Place::DEREF)
-    // {
-    // auto &base = place_db[place_db[id].path.parent];
-    // if (!base.tyty->as<TyTy::ReferenceType> ()->is_mutable ())
-    // rust_error_at (UNKNOWN_LOCATION,
-    // "Mutating content behind an immutable reference.");
-    // }
-    // });
 
     check_write_for_conflict (place_id);
   }
@@ -438,6 +437,7 @@ protected: // Statement visitors.
 	issue_write (lhs);
 	stmt.get_expr ().accept_vis (*this);
 	kill_borrows_for_place (lhs);
+	// TODO: when adding unwind, must had hadning for non-panic assignements
 	facts.path_assigned_at_base.emplace_back (lhs,
 						  get_current_point_mid ());
 	break;
@@ -445,27 +445,29 @@ protected: // Statement visitors.
 	issue_jumps ();
 	break;
       case Statement::Kind::GOTO:
-	issue_read (stmt.get_place ());
 	issue_jumps ();
 	break;
 	case Statement::Kind::RETURN: {
 	  issue_var_used (RETURN_VALUE_PLACE);
-	  for (auto &place : place_db)
+	  for (LoanId loan_id = 0; loan_id < place_db.get_loans ().size ();
+	       ++loan_id)
 	    {
-	      // TODO: use borrow set instead
-	      if (place.is_var () && !place.is_indirect ())
-		{
-		  for (auto loan : place.borrowed_by)
-		    {
-		      facts.loan_invalidated_at.emplace_back (
-			get_current_point_start (), loan);
-		    }
-		}
+	      auto &loan = place_db.get_loans ()[loan_id];
+	      auto loaned_var_id = place_db.get_var (loan.place);
+	      if (loaned_var_id >= first_local)
+		facts.loan_invalidated_at.emplace_back (
+		  get_current_point_start (), loan_id);
 	    }
 	}
 	break;
-      case Statement::Kind::STORAGE_DEAD:
-	issue_write (stmt.get_place ());
+	case Statement::Kind::STORAGE_DEAD: {
+	  auto &place = place_db[stmt.get_place ()];
+	  issue_write (stmt.get_place ());
+	  kill_borrows_for_place (stmt.get_place ());
+	  if (place.should_be_moved ())
+	    facts.path_moved_at_base.emplace_back (stmt.get_place (),
+						   get_current_point_mid ());
+	}
 	break;
       case Statement::Kind::STORAGE_LIVE:
 	facts.var_defined_at.emplace_back (stmt.get_place (),
@@ -497,14 +499,17 @@ protected: // Statement visitors.
       }
   }
 
-  void issue_move (PlaceId place_id)
+  void issue_move (PlaceId place_id, bool initial = false)
   {
     auto &place = place_db[place_id];
-    if ((place.is_var () || place.is_path ()))
+    if (place.should_be_moved ())
       {
 	facts.path_moved_at_base.emplace_back (
-	  place_id, get_point (0, 0, PointPosition::START));
+	  place_id, initial ? get_point (0, 0, PointPosition::START) : get_current_point_mid ());
       }
+
+    if (!initial)
+      check_write_for_conflict (place_id, true);
   }
 
   /**
@@ -673,7 +678,7 @@ protected: // Statement visitors.
     place_db.for_each_path_segment (place_id, [&] (PlaceId id) {
       for (auto loan : place_db[id].borrowed_by)
 	{
-	  if (loans[loan].mutability == Mutability::Mut)
+	  if (place_db.get_loans ()[loan].mutability == Mutability::Mut)
 	    {
 	      facts.loan_invalidated_at.emplace_back (
 		get_current_point_start (), loan);
@@ -682,7 +687,7 @@ protected: // Statement visitors.
     });
   }
 
-  void check_write_for_conflict (PlaceId place_id)
+  void check_write_for_conflict (PlaceId place_id, bool deep = false)
   {
     place_db.for_each_path_segment (place_id, [&] (PlaceId id) {
       for (auto loan : place_db[id].borrowed_by)
@@ -691,6 +696,17 @@ protected: // Statement visitors.
 						  loan);
 	}
     });
+    // TODO not sure here
+    if (deep)
+      {
+	place_db.for_each_path_from_root (place_id, [&] (PlaceId id) {
+	  for (auto loan : place_db[id].borrowed_by)
+	    {
+	      facts.loan_invalidated_at.emplace_back (
+		get_current_point_start (), loan);
+	    }
+	});
+      }
   }
 
   void check_for_borrow_conficts (PlaceId place_id, Mutability mutability)
@@ -699,7 +715,7 @@ protected: // Statement visitors.
       for (auto loan : place_db[id].borrowed_by)
 	{
 	  if (mutability == Mutability::Imm
-	      && loans[loan].mutability == Mutability::Imm)
+	      && place_db.get_loans ()[loan].mutability == Mutability::Imm)
 	    {
 	      continue;
 	    }
@@ -736,30 +752,54 @@ protected: // Statement visitors.
   {
     rust_debug ("\t_%u = BorrowExpr(_%u)", lhs - 1, expr.get_place () - 1);
 
-    issue_read (expr.get_place (), false);
+    auto loan = place_db.get_loans ()[expr.get_loan ()];
 
     auto &base_place = place_db[expr.get_place ()];
     auto &ref_place = place_db[lhs];
 
-    facts.loan_issued_at.emplace_back (expr.get_origin (), expr.get_loan (),
-				       get_current_point_mid ());
-
-    auto loan_region = ref_place.regions[0];
-
-    push_subset (expr.get_origin (), loan_region);
-
-    for (auto &region : base_place.regions)
+    if (loan.mutability == Mutability::Imm && base_place.kind == Place::DEREF)
       {
-	push_subset (region, expr.get_origin ());
+	// Reborrow
+	auto &main_loan_place = place_db[base_place.path.parent];
+	push_subset (expr.get_origin (), main_loan_place.regions[0]);
+	push_subset (ref_place.regions[0], expr.get_origin ());
+	// push_subset (ref_place.tyty, main_loan_place.regions,
+	// ref_place.regions);
       }
+    else if (loan.mutability == Mutability::Mut
+	     && base_place.kind == Place::DEREF)
+      {
+	facts.loan_issued_at.emplace_back (expr.get_origin (), expr.get_loan (),
+					   get_current_point_mid ());
+	// Reborrow
+	auto &main_loan_place = place_db[base_place.path.parent];
+	push_subset (expr.get_origin (), main_loan_place.regions[0]);
+	push_subset (ref_place.regions[0], expr.get_origin ());
+	// push_subset (ref_place.tyty, main_loan_place.regions,
+	// ref_place.regions);
+      }
+    else
+      {
+	facts.loan_issued_at.emplace_back (expr.get_origin (), expr.get_loan (),
+					   get_current_point_mid ());
 
-    check_for_borrow_conficts (
-      expr.get_place (),
-      ref_place.tyty->as<TyTy::ReferenceType> ()->mutability ());
+	std::vector<FreeRegion> regions;
+	regions.push_back (expr.get_origin ());
+	regions.insert (regions.end (), base_place.regions.begin (),
+			base_place.regions.end ());
+	FreeRegions loan_regions (std::move (regions));
+	push_subset (ref_place.tyty, loan_regions, ref_place.regions);
+
+	check_for_borrow_conficts (
+	  expr.get_place (),
+	  ref_place.tyty->as<TyTy::ReferenceType> ()->mutability ());
+      }
   }
 
   void visit (const Assignment &expr) override
   {
+    rust_assert (lhs != INVALID_PLACE);
+
     rust_debug ("\t_%u = Assignment(_%u) at %u:%u", lhs - 1,
 		expr.get_rhs () - 1, current_bb, current_stmt);
 
@@ -786,19 +826,21 @@ protected: // Statement visitors.
     for (size_t i = 0; i < expr.get_arguments ().size (); ++i)
       {
 	auto arg = expr.get_arguments ().at (i);
-	issue_read (arg);
-	push_subset (place_db[arg].tyty,
+	issue_read (arg, true);
+	push_subset (place_db[arg].tyty, place_db[arg].regions,
 		     bind_regions (TyTy::VarianceAnalysis::query_type_regions (
 				     callable_ty->get_param_type_at (i)),
-				   call_regions),
-		     place_db[arg].regions);
+				   call_regions));
       }
+
+    // sanitize return regions
 
     auto return_regions
       = bind_regions (TyTy::VarianceAnalysis::query_type_regions (
 			callable_ty->as<TyTy::FnType> ()->get_return_type ()),
 		      call_regions);
-    push_subset (return_place.tyty, return_place.regions, return_regions);
+    // TODO !!! sanitize return regions
+    push_subset (return_place.tyty, return_regions, return_place.regions);
     issue_jumps ();
   }
 }; // namespace BIR

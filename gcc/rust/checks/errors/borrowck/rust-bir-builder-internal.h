@@ -94,11 +94,7 @@ struct BuilderContext
   /** Context for current situation (loop, label, etc.) */
   std::vector<LoopAndLabelCtx> loop_and_label_stack;
 
-  LoanId next_loan_id = 0;
-
   FreeRegions fn_free_regions{{}};
-
-  std::vector<Loan> loans;
 
 public:
   BuilderContext ()
@@ -300,35 +296,36 @@ protected: // Helpers to add BIR statements
 						   place);
   }
 
-  BorrowExpr *borrow_place (PlaceId place_id)
+  PlaceId borrow_place (PlaceId place_id, TyTy::BaseType *ty)
   {
-    // FIXME
-    auto loan = ctx.next_loan_id++;
-    auto &place = ctx.place_db[place_id];
-    place.borrowed_by.push_back (loan);
-    return new BorrowExpr (place_id, loan,
-			   ctx.place_db.get_next_free_region ());
-
+    auto mutability = ty->as<const TyTy::ReferenceType> ()->mutability ();
+    auto loan = ctx.place_db.add_loan ({mutability, place_id});
+    push_tmp_assignment (new BorrowExpr (place_id, loan,
+					 ctx.place_db.get_next_free_region ()),
+			 ty);
+    return translated;
   }
 
   PlaceId move_place (PlaceId arg)
   {
-    if (ctx.place_db[arg].is_lvalue ())
-      {
-	push_tmp_assignment (arg);
-	arg = translated;
-      }
+    auto &place = ctx.place_db[arg];
 
-    return arg;
+    if (!place.is_lvalue () && !place.is_rvalue ())
+      return arg;
+
+    if (place.tyty->is<TyTy::ReferenceType> ())
+      return reborrow_place (arg);
+
+    push_tmp_assignment (arg);
+    return translated;
   }
 
   PlaceId reborrow_place (PlaceId arg)
   {
     auto ty = ctx.place_db[arg].tyty->as<TyTy::ReferenceType> ();
-    push_tmp_assignment (borrow_place (ctx.place_db.lookup_or_add_path (
-			   Place::DEREF, ty->get_base (), arg)),
+    return borrow_place (ctx.place_db.lookup_or_add_path (Place::DEREF,
+							  ty->get_base (), arg),
 			 ty);
-    return translated;
   }
 
   template <typename T> void move_all (T &args)
@@ -404,15 +401,17 @@ protected: // HIR resolution helpers
   template <typename T>
   PlaceId resolve_variable_or_fn (T &variable, TyTy::BaseType *ty)
   {
+    ty = (ty) ? ty : lookup_type (variable);
     // Unlike variables,
     // functions do not have to be declared in PlaceDB before use.
     NodeId variable_id;
     bool ok = ctx.resolver.lookup_resolved_name (
       variable.get_mappings ().get_nodeid (), &variable_id);
     rust_assert (ok);
-    return ctx.place_db.lookup_or_add_variable (variable_id,
-						(ty) ? ty
-						     : lookup_type (variable));
+    if (ty->is<TyTy::FnType> ())
+      return ctx.place_db.get_constant (ty);
+    else
+      return ctx.place_db.lookup_or_add_variable (variable_id, ty);
   }
 
 protected: // Implicit conversions.
@@ -471,11 +470,11 @@ protected: // Implicit conversions.
     if (ctx.place_db[translated].tyty->get_kind () != TyTy::REF)
       {
 	auto ty = ctx.place_db[translated].tyty;
-	push_tmp_assignment (
-	  borrow_place (translated),
-	  new TyTy::ReferenceType (ty->get_ref (), TyTy::TyVar (ty->get_ref ()),
-				   Mutability::Imm,
-				   TyTy::Region::make_anonymous ()));
+	translated
+	  = borrow_place (translated,
+			  new TyTy::ReferenceType (
+			    ty->get_ref (), TyTy::TyVar (ty->get_ref ()),
+			    Mutability::Imm, TyTy::Region::make_anonymous ()));
       }
   }
 };
@@ -540,6 +539,11 @@ protected:
       {
 	start_new_consecutive_bb ();
       }
+
+    if (ty->is<TyTy::ReferenceType> ())
+      {
+	push_fake_read (translated);
+      }
   }
 
   /** Mark place to be a result of processed subexpression. */
@@ -549,8 +553,6 @@ protected:
       {
 	// Return place is already allocated, no need to defer assignment.
 	push_assignment (expr_return_place, place);
-	if (ctx.place_db[expr_return_place].is_lvalue ())
-	  push_fake_read (expr_return_place);
       }
     else
       {
@@ -562,6 +564,17 @@ protected:
   void return_unit (HIR::Expr &expr)
   {
     translated = ctx.place_db.get_constant (lookup_type (expr));
+  }
+
+  PlaceId return_borrowed (PlaceId place_id, TyTy::BaseType *ty)
+  {
+    // TODO: deduplicate with borrow_place
+    auto loan = ctx.place_db.add_loan (
+      {ty->as<const TyTy::ReferenceType> ()->mutability (), place_id});
+    return_expr (new BorrowExpr (place_id, loan,
+				 ctx.place_db.get_next_free_region ()),
+		 ty);
+    return translated;
   }
 
   PlaceId take_or_create_return_place (TyTy::BaseType *type)

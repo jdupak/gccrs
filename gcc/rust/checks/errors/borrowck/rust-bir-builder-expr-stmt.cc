@@ -119,14 +119,15 @@ void
 ExprStmtBuilder::visit (HIR::BorrowExpr &expr)
 {
   auto operand = visit_expr (*expr.get_expr ());
+  if (ctx.place_db[operand].is_constant ())
+    {
+      // Cannot borrow a contant, must create a temporary copy.
+      push_tmp_assignment (operand);
+      operand = translated;
+    }
+
   // BorrowExpr cannot be annotated with lifetime.
-  auto loan = borrow_place (operand);
-  push_tmp_assignment (loan, lookup_type (expr));
-  ctx.loans.push_back ({ctx.place_db[translated]
-			  .tyty->as<const TyTy::ReferenceType> ()
-			  ->mutability (),
-			translated}); // TODO: refactor into borrow_place
-  return_place (translated);
+  return_borrowed (operand, lookup_type (expr));
 }
 
 void
@@ -190,6 +191,7 @@ ExprStmtBuilder::visit (HIR::AssignmentExpr &expr)
   auto lhs = visit_expr (*expr.get_lhs ());
   auto rhs = visit_expr (*expr.get_rhs ());
   push_assignment (lhs, rhs);
+  translated = INVALID_PLACE;
 }
 
 void
@@ -519,24 +521,27 @@ ExprStmtBuilder::visit (HIR::IfExprConseqElse &expr)
   ctx.current_bb = new_bb ();
   BasicBlockId then_start_bb = ctx.current_bb;
   (void) visit_expr (*expr.get_if_block (), result);
-  if (!ctx.get_current_bb ().is_terminated ())
+  bool then_terminated = ctx.get_current_bb ().is_terminated ();
+  if (!then_terminated)
     push_goto (INVALID_BB); // Resolved later.
   BasicBlockId then_end_bb = ctx.current_bb;
 
   ctx.current_bb = new_bb ();
   BasicBlockId else_start_bb = ctx.current_bb;
   (void) visit_expr (*expr.get_else_block (), result);
-  if (!ctx.get_current_bb ().is_terminated ())
+  bool else_terminated = ctx.get_current_bb ().is_terminated ();
+  if (!else_terminated)
     push_goto (INVALID_BB); // Resolved later.
   BasicBlockId else_end_bb = ctx.current_bb;
-
-  ctx.current_bb = new_bb ();
-  BasicBlockId final_start_bb = ctx.current_bb;
-  return_place (result);
 
   // Jumps are added at the end to match rustc MIR order for easier comparison.
   add_jump (if_end_bb, then_start_bb);
   add_jump (if_end_bb, else_start_bb);
+
+  ctx.current_bb = new_bb ();
+  BasicBlockId final_start_bb = ctx.current_bb;
+
+  return_place (result);
 
   auto &then_bb = ctx.basic_blocks[then_end_bb];
   if (then_bb.is_goto_terminated () && then_bb.successors.empty ())
@@ -619,8 +624,7 @@ void
 ExprStmtBuilder::visit (HIR::QualifiedPathInExpression &expr)
 {
   // Note: Type is only stored for the expr, not the segment.
-  PlaceId result
-    = resolve_variable_or_fn (expr, lookup_type (expr));
+  PlaceId result = resolve_variable_or_fn (expr, lookup_type (expr));
   return_place (result);
 }
 
@@ -628,8 +632,7 @@ void
 ExprStmtBuilder::visit (HIR::PathInExpression &expr)
 {
   // Note: Type is only stored for the expr, not the segment.
-  PlaceId result
-    = resolve_variable_or_fn (expr, lookup_type (expr));
+  PlaceId result = resolve_variable_or_fn (expr, lookup_type (expr));
   return_place (result);
 }
 
@@ -668,7 +671,11 @@ ExprStmtBuilder::visit (HIR::LetStmt &stmt)
 void
 ExprStmtBuilder::visit (HIR::ExprStmt &stmt)
 {
-  (void) visit_expr (*stmt.get_expr ());
+  PlaceId result = visit_expr (*stmt.get_expr ());
+  // We must read the value for corrent liveness and we must not store it into
+  // the same place.
+  if (result != INVALID_PLACE)
+    push_tmp_assignment (result);
 }
 } // namespace BIR
 } // namespace Rust

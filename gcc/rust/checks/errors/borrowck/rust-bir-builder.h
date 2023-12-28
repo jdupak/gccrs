@@ -57,7 +57,6 @@ public:
       std::move (ctx.basic_blocks),
       std::move (ctx.fn_free_regions),
       std::move (universal_region_bounds),
-      std::move (ctx.loans),
     };
   }
 
