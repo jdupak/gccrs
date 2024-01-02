@@ -35,8 +35,7 @@ namespace BIR {
 using PlaceId = uint32_t;
 
 static constexpr PlaceId INVALID_PLACE = 0;
-static constexpr PlaceId WILDCARD_PLACE = 1;
-static constexpr PlaceId RETURN_VALUE_PLACE = 2;
+static constexpr PlaceId RETURN_VALUE_PLACE = 1;
 static constexpr PlaceId FIRST_VARIABLE_PLACE = RETURN_VALUE_PLACE;
 
 using Variance = TyTy::VarianceAnalysis::Variance;
@@ -182,8 +181,6 @@ public:
   PlaceDB ()
   {
     // Reserved index for invalid place.
-    places.push_back ({Place::INVALID, 0, {}, false, nullptr});
-    // Reserved index for wildcard place.
     places.push_back ({Place::INVALID, 0, {}, false, nullptr});
 
     scopes.emplace_back (); // Root scope.
@@ -334,12 +331,17 @@ public:
       return id;
     rust_assert (places[id].is_path ());
     PlaceId current = id;
-    while (places[current].path.parent != INVALID_PLACE)
+    while (!places[current].is_var ())
       {
 	current = places[current].path.parent;
       }
     return current;
-  };
+  }
+
+  void set_next_free_region (Polonius::Origin next_free_region)
+  {
+    this->next_free_region = next_free_region;
+  }
 
   PlaceId lookup_or_add_variable (NodeId id, TyTy::BaseType *tyty)
   {

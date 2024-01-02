@@ -57,6 +57,7 @@ public:
       std::move (ctx.basic_blocks),
       std::move (ctx.fn_free_regions),
       std::move (universal_region_bounds),
+      function.get_locus (),
     };
   }
 
@@ -70,10 +71,9 @@ private:
 	function_free_regions.push_back (ctx.place_db.get_next_free_region ());
       }
 
-    ctx.fn_free_regions.set_from (std::move (function_free_regions));
-
     rust_debug ("\tctx.fn_free_region={%s}",
 		ctx.fn_free_regions.to_string ().c_str ());
+    ctx.fn_free_regions.set_from (std::move (function_free_regions));
   }
 
   void handle_lifetime_param_constraints (

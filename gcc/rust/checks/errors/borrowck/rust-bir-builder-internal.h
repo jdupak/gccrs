@@ -310,11 +310,14 @@ protected: // Helpers to add BIR statements
   {
     auto &place = ctx.place_db[arg];
 
-    if (!place.is_lvalue () && !place.is_rvalue ())
+    if (place.is_constant ())
       return arg;
 
     if (place.tyty->is<TyTy::ReferenceType> ())
       return reborrow_place (arg);
+
+    if (place.is_rvalue ())
+      return arg;
 
     push_tmp_assignment (arg);
     return translated;
@@ -547,7 +550,7 @@ protected:
   }
 
   /** Mark place to be a result of processed subexpression. */
-  void return_place (PlaceId place)
+  void return_place (PlaceId place, bool can_panic = false)
   {
     if (expr_return_place != INVALID_PLACE)
       {
@@ -557,6 +560,11 @@ protected:
     else
       {
 	translated = place;
+      }
+
+    if (can_panic)
+      {
+	start_new_consecutive_bb ();
       }
   }
 

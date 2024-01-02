@@ -28,6 +28,13 @@ public:
       }
   }
 
+  WARN_UNUSED_RESULT FreeRegions prepend (FreeRegion region) const
+  {
+    std::vector new_regions = {region};
+    new_regions.insert (new_regions.end (), regions.begin (), regions.end ());
+    return FreeRegions (std::move (new_regions));
+  }
+
   FreeRegions (std::vector<FreeRegion> &&regions) : regions (regions) {}
 
   WARN_UNUSED_RESULT std::string to_string () const

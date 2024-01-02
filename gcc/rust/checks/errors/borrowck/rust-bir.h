@@ -47,6 +47,7 @@ struct Function
   std::vector<BasicBlock> basic_blocks;
   FreeRegions universal_regions;
   std::vector<std::pair<FreeRegion, FreeRegion>> universal_region_bounds;
+  location_t location;
 };
 
 /** Single statement of BIR. */

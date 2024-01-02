@@ -356,7 +356,10 @@ ExprStmtBuilder::visit (HIR::BlockExpr &block)
 				  lookup_type (*block.get_final_expr ()))));
     }
 
-  pop_scope ();
+  if (!unreachable)
+    pop_scope ();
+  else
+    ctx.place_db.pop_scope ();
 }
 
 void
@@ -432,10 +435,12 @@ ExprStmtBuilder::visit (HIR::ReturnExpr &ret)
 {
   if (ret.has_return_expr ())
     {
-      push_assignment (RETURN_VALUE_PLACE, visit_expr (*ret.get_expr ()));
+      push_assignment (RETURN_VALUE_PLACE,
+		       move_place (visit_expr (*ret.get_expr ())));
     }
   unwind_until (ROOT_SCOPE);
   ctx.get_current_bb ().statements.emplace_back (Statement::Kind::RETURN);
+  translated = INVALID_PLACE;
 }
 
 void
@@ -521,27 +526,24 @@ ExprStmtBuilder::visit (HIR::IfExprConseqElse &expr)
   ctx.current_bb = new_bb ();
   BasicBlockId then_start_bb = ctx.current_bb;
   (void) visit_expr (*expr.get_if_block (), result);
-  bool then_terminated = ctx.get_current_bb ().is_terminated ();
-  if (!then_terminated)
+  if (!ctx.get_current_bb ().is_terminated ())
     push_goto (INVALID_BB); // Resolved later.
   BasicBlockId then_end_bb = ctx.current_bb;
 
   ctx.current_bb = new_bb ();
   BasicBlockId else_start_bb = ctx.current_bb;
   (void) visit_expr (*expr.get_else_block (), result);
-  bool else_terminated = ctx.get_current_bb ().is_terminated ();
-  if (!else_terminated)
+  if (!ctx.get_current_bb ().is_terminated ())
     push_goto (INVALID_BB); // Resolved later.
   BasicBlockId else_end_bb = ctx.current_bb;
+
+  ctx.current_bb = new_bb ();
+  BasicBlockId final_start_bb = ctx.current_bb;
+  return_place (result);
 
   // Jumps are added at the end to match rustc MIR order for easier comparison.
   add_jump (if_end_bb, then_start_bb);
   add_jump (if_end_bb, else_start_bb);
-
-  ctx.current_bb = new_bb ();
-  BasicBlockId final_start_bb = ctx.current_bb;
-
-  return_place (result);
 
   auto &then_bb = ctx.basic_blocks[then_end_bb];
   if (then_bb.is_goto_terminated () && then_bb.successors.empty ())

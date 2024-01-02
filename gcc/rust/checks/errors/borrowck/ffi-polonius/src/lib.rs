@@ -94,7 +94,7 @@ fn print_point(point: GccrsAtom) {
 #[no_mangle]
 pub unsafe extern "C" fn polonius_run(input: gccrs_ffi::FactsView, dump_enabled: bool) -> gccrs_ffi::Output {
     let facts = AllFacts::<GccrsFacts>::from(input);
-    let output = Output::compute(&facts, polonius_engine::Algorithm::Naive, dump_enabled);
+    let output = Output::compute(&facts, polonius_engine::Algorithm::Hybrid, dump_enabled);
 
     if dump_enabled {
         // FIXME: Temporary output
@@ -141,12 +141,26 @@ pub unsafe extern "C" fn polonius_run(input: gccrs_ffi::FactsView, dump_enabled:
         }
 
         eprintln!("Polonius analysis completed. Results:");
-        eprintln!("Errors: {:#?}", output.errors);
-        eprintln!("Subset error: {:#?}", output.subset_errors);
-        eprintln!("Move error:");
-        for (&point, moves) in &output.move_errors {
-            print_point(point);
-            eprintln!("{:?}", moves);
+        if output.errors.len() > 0 {
+            eprintln!("Errors:");
+            for (&point, errors) in &output.errors {
+                print_point(point);
+                eprintln!(": {:?}", errors);
+            }
+        }
+        if output.subset_errors.len() > 0 {
+            eprintln!("Subset errors:");
+            for (&point, errors) in &output.subset_errors {
+                print_point(point);
+                eprintln!(": {:?}", errors);
+            }
+        }
+        if output.move_errors.len() > 0 {
+            eprintln!("Move errors:");
+            for (&point, moves) in &output.move_errors {
+                print_point(point);
+                eprintln!("{:?}", moves);
+            }
         }
     }
 

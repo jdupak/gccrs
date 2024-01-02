@@ -242,8 +242,6 @@ Dump::visit_place (PlaceId place_id)
     case Place::INVALID:
       if (place_id == INVALID_PLACE)
 	stream << "_INVALID";
-      else if (place_id == WILDCARD_PLACE)
-	stream << "_";
     }
 }
 

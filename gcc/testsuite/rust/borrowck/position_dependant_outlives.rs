@@ -1,7 +1,6 @@
 // { dg-additional-options "-frust-compile-until=compilation -frust-borrowcheck" }
 
-pub fn position_dependent_outlives(x: &mut i32, cond: bool) -> &mut i32 {
-    // { dg-error "Found loan errors in function position_dependent_outlives" "" { target *-*-* } .-1 }
+pub fn position_dependent_outlives<'a>(x: &'a mut i32, cond: bool) -> &'a mut i32 {
     let y = &mut *x;
     if cond {
         return y;

@@ -8,6 +8,9 @@ fn well_formed_function_inputs() { // { dg-error "Found loan errors in function 
     let s = &mut 1;
     let r = &mut *s;
     let tmp = foo(&r  );
+    // let arg = &r;
+    // let aarg = &*arg;
+    // let tmp = arg;
     s; //~ ERROR
     tmp;
 }
