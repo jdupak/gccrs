@@ -94,7 +94,7 @@ fn print_point(point: GccrsAtom) {
 #[no_mangle]
 pub unsafe extern "C" fn polonius_run(input: gccrs_ffi::FactsView, dump_enabled: bool) -> gccrs_ffi::Output {
     let facts = AllFacts::<GccrsFacts>::from(input);
-    let output = Output::compute(&facts, polonius_engine::Algorithm::Hybrid, dump_enabled);
+    let output = Output::compute(&facts, polonius_engine::Algorithm::DatafrogOpt, dump_enabled);
 
     if dump_enabled {
         // FIXME: Temporary output
@@ -113,7 +113,6 @@ pub unsafe extern "C" fn polonius_run(input: gccrs_ffi::FactsView, dump_enabled:
             }
             eprintln!("}}");
         }
-        eprintln!("Subset anywhere: {:#?}", output.subset_anywhere);
 
         // Print origin live on entry
         eprintln!("Origin live on entry:");

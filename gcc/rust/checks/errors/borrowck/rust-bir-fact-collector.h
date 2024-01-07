@@ -65,6 +65,8 @@ class FactCollector : public Visitor
       {
 	if (region.is_early_bound ())
 	  {
+	    rust_debug ("\t\tbind_regions: '?%u (%zu)", region.get_index (),
+			parent_free_regions.size ());
 	    free_regions.push_back (parent_free_regions[region.get_index ()]);
 	  }
 	else if (region.is_static ())
@@ -269,7 +271,8 @@ protected: // Main collection entry points (for different categories).
 	  break;
 	}
 	case Statement::Kind::STORAGE_DEAD: {
-	  issue_move (stmt.get_place (), true);
+	  facts.path_moved_at_base.emplace_back (stmt.get_place (),
+						 get_current_point_mid ());
 	  facts.var_defined_at.emplace_back (stmt.get_place (),
 					     get_current_point_mid ());
 	  break;
@@ -336,6 +339,8 @@ protected: // Main collection entry points (for different categories).
 	if (loan.mutability == Mutability::Mut)
 	  {
 	    issue_loan (expr.get_origin (), expr.get_loan ());
+	    auto& main_loan_place = place_db[base_place.path.parent];
+	    push_subset (main_loan_place.regions[0], expr.get_origin ());
 	  }
       }
     else
@@ -360,38 +365,34 @@ protected: // Main collection entry points (for different categories).
   {
     rust_debug ("\t_%u = CallExpr(_%u)", lhs - 1, expr.get_callable () - 1);
 
-    issue_read_move (expr.get_arguments ()[0]);
-    push_subset (lhs, expr.get_arguments ()[0]);
-    //    auto &return_place = place_db[lhs];
-    //    auto &callable_place = place_db[expr.get_callable ()];
-    //    auto callable_ty =
-    //    callable_place.tyty->as<TyTy::CallableTypeInterface> ();
-    //
-    //    issue_read_move (expr.get_callable ());
-    //
-    //    // Each call needs unique regions.
-    //    auto call_regions = make_fresh_regions (callable_place.regions.size
-    //    ());
-    //
-    //    for (size_t i = 0; i < expr.get_arguments ().size (); ++i)
-    //      {
-    // auto arg = expr.get_arguments ().at (i);
-    // auto arg_regions
-    //   = bind_regions (TyTy::VarianceAnalysis::query_type_regions (
-    // 		    callable_ty->get_param_type_at (i)),
-    // 		  call_regions);
-    // issue_read_move (arg);
-    // push_subset (place_db[arg].tyty, place_db[arg].regions, arg_regions);
-    //      }
-    //
-    //    // sanitize return regions
-    //    sanitize_constrains_at_init (lhs);
-    //
-    //    auto return_regions
-    //      = bind_regions (TyTy::VarianceAnalysis::query_type_regions (
-    // 		callable_ty->as<TyTy::FnType> ()->get_return_type ()),
-    // 	      call_regions);
-    //    push_subset (return_place.tyty, return_regions, return_place.regions);
+    auto &return_place = place_db[lhs];
+    auto &callable_place = place_db[expr.get_callable ()];
+    auto callable_ty = callable_place.tyty->as<TyTy::CallableTypeInterface> ();
+
+    issue_read_move (expr.get_callable ());
+
+    // Each call needs unique regions.
+    auto call_regions = make_fresh_regions (callable_place.regions.size ());
+
+    for (size_t i = 0; i < expr.get_arguments ().size (); ++i)
+      {
+	auto arg = expr.get_arguments ().at (i);
+	auto arg_regions
+	  = bind_regions (TyTy::VarianceAnalysis::query_type_regions (
+			    callable_ty->get_param_type_at (i)),
+			  call_regions);
+	issue_read_move (arg);
+	push_subset (place_db[arg].tyty, place_db[arg].regions, arg_regions);
+      }
+
+    // sanitize return regions
+    sanitize_constrains_at_init (lhs);
+
+    auto return_regions
+      = bind_regions (TyTy::VarianceAnalysis::query_type_regions (
+			callable_ty->as<TyTy::FnType> ()->get_return_type ()),
+		      call_regions);
+    push_subset (return_place.tyty, return_regions, return_place.regions);
 
     issue_jumps ();
   }
@@ -448,6 +449,9 @@ protected: // Generic BIR operations.
   void issue_place_access (PlaceId place_id)
   {
     auto &place = place_db[place_id];
+
+    if (place.is_constant ())
+      return;
 
     if (place_id != RETURN_VALUE_PLACE)
       facts.path_accessed_at_base.emplace_back (place_id,
@@ -555,11 +559,28 @@ protected: // Generic BIR operations.
 	    }
 	}
     });
+    place_db.for_each_path_from_root (place_id, [&] (PlaceId id) {
+      for (auto loan : place_db[id].borrowed_by)
+	{
+	  if (place_db.get_loans ()[loan].mutability == Mutability::Mut)
+	    {
+	      facts.loan_invalidated_at.emplace_back (
+		get_current_point_start (), loan);
+	    }
+	}
+    });
   }
 
   void check_write_for_conflict (PlaceId place_id)
   {
     place_db.for_each_path_segment (place_id, [&] (PlaceId id) {
+      for (auto loan : place_db[id].borrowed_by)
+	{
+	  facts.loan_invalidated_at.emplace_back (get_current_point_start (),
+						  loan);
+	}
+    });
+    place_db.for_each_path_from_root (place_id, [&] (PlaceId id) {
       for (auto loan : place_db[id].borrowed_by)
 	{
 	  facts.loan_invalidated_at.emplace_back (get_current_point_start (),
@@ -572,6 +593,22 @@ protected: // Generic BIR operations.
 				  Mutability mutability)
   {
     place_db.for_each_path_segment (place_id, [&] (PlaceId id) {
+      for (auto loan : place_db[id].borrowed_by)
+	{
+	  if (mutability == Mutability::Imm
+	      && place_db.get_loans ()[loan].mutability == Mutability::Imm)
+	    {
+	      continue;
+	    }
+	  else
+	    {
+	      facts.loan_invalidated_at.emplace_back (
+		get_current_point_start (), loan);
+	    }
+	}
+    });
+
+    place_db.for_each_path_from_root (place_id, [&] (PlaceId id) {
       for (auto loan : place_db[id].borrowed_by)
 	{
 	  if (mutability == Mutability::Imm

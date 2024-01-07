@@ -543,7 +543,7 @@ protected:
 	start_new_consecutive_bb ();
       }
 
-    if (ty->is<TyTy::ReferenceType> ())
+    if (ty->is<TyTy::ReferenceType> () || ctx.place_db[translated].is_constant ())
       {
 	push_fake_read (translated);
       }
@@ -565,6 +565,11 @@ protected:
     if (can_panic)
       {
 	start_new_consecutive_bb ();
+      }
+
+    if (ctx.place_db[place].is_constant ())
+      {
+	push_fake_read (translated);
       }
   }
 
