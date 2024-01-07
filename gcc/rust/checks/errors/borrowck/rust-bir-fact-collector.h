@@ -336,12 +336,17 @@ protected: // Main collection entry points (for different categories).
       {
 	// Reborrow
 
+	auto &main_loan_place = place_db[base_place.path.parent];
 	if (loan.mutability == Mutability::Mut)
 	  {
+	    if (!main_loan_place.tyty->as<TyTy::ReferenceType> ()
+		   ->is_mutable ())
+	      rust_error_at (location,
+			     "Cannot reborrow immutable borrow as mutable");
 	    issue_loan (expr.get_origin (), expr.get_loan ());
-	    auto& main_loan_place = place_db[base_place.path.parent];
-	    push_subset (main_loan_place.regions[0], expr.get_origin ());
 	  }
+
+	push_subset (main_loan_place.regions[0], expr.get_origin ());
       }
     else
       {
