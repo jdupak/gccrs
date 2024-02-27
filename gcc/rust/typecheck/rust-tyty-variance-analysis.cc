@@ -59,6 +59,19 @@ query_type_regions (BaseType *type)
   TyVisitorCtx ctx;
   return ctx.collect_regions (*type);
 }
+std::vector<size_t>
+query_field_regions (const ADTType *parent, size_t variant_index,
+		     size_t field_index, const FreeRegions &parent_regions)
+{
+  auto orig = lookup_type (parent->get_orig_ref ());
+  FieldVisitorCtx ctx (*parent->as<const SubstitutionRef> (), parent_regions);
+  return ctx.collect_regions (*orig->as<const ADTType> ()
+				 ->get_variants ()
+				 .at (variant_index)
+				 ->get_fields ()
+				 .at (field_index)
+				 ->get_field_type ());
+}
 
 Variance
 Variance::reverse () const
@@ -502,6 +515,58 @@ TyVisitorCtx::add_constraints_from_generic_args (HirId ref,
 	      add_constraints_from_ty (arg.value ().get_tyty (), variance_i);
 	    }
 	}
+    }
+}
+
+std::vector<size_t>
+FieldVisitorCtx::collect_regions (BaseType &ty)
+{
+  // Segment the regions into ranges for each type parameter. Type parameter
+  // at index i contains regions from type_param_ranges[i] to
+  // type_param_ranges[i+1] (exclusive).;
+  type_param_ranges.push_back (subst.get_num_lifetime_params ());
+
+  for (size_t i = 0; i < subst.get_num_type_params (); i++)
+    {
+      auto arg = subst.get_arg_at (i);
+      rust_assert (arg.has_value ());
+      type_param_ranges.push_back (
+	query_type_regions (arg.value ().get_tyty ()).size ());
+    }
+
+  add_constraints_from_ty (&ty, V::covariant ());
+  return regions;
+}
+
+void
+FieldVisitorCtx::add_constraints_from_ty (BaseType *ty, Variance variance)
+{
+  Visitor visitor (*this, variance);
+  ty->accept_vis (visitor);
+}
+
+void
+FieldVisitorCtx::add_constraints_from_region (const Region &region,
+					      Variance variance)
+{
+  if (region.is_early_bound ())
+    {
+      regions.push_back (parent_regions[region.get_index ()]);
+    }
+  else if (region.is_late_bound ())
+    {
+      rust_debug ("Ignoring late bound region");
+    }
+}
+
+void
+FieldVisitorCtx::add_constrints_from_param (ParamType &param, Variance variance)
+{
+  size_t param_i = subst.get_used_arguments ().find_symbol (param).value ();
+  for (size_t i = type_param_ranges[param_i];
+       i < type_param_ranges[param_i + 1]; i++)
+    {
+      regions.push_back (parent_regions[i]);
     }
 }
 
