@@ -18,9 +18,10 @@
 
 #include "rust-borrow-checker.h"
 #include "rust-function-collector.h"
+#include "rust-bir-fact-collector.h"
 #include "rust-bir-builder.h"
 #include "rust-bir-dump.h"
-#include "rust-bir-fact-collector.h"
+#include "polonius/rust-polonius.h"
 
 namespace Rust {
 namespace HIR {
