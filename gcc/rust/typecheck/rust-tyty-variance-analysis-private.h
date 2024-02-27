@@ -282,6 +282,38 @@ private:
   std::vector<Region> regions;
 };
 
+/** Extracts regions of a field from regions of parent ADT. */
+class FieldVisitorCtx : public VarianceVisitorCtx<Variance>
+{
+  const SubstitutionRef &subst;
+  std::vector<size_t> regions;
+  FreeRegions parent_regions;
+  std::vector<size_t> type_param_ranges;
+
+public:
+  using Visitor = VisitorBase<Variance>;
+
+  std::vector<size_t> collect_regions (BaseType &ty);
+
+  FieldVisitorCtx (const SubstitutionRef &subst,
+		   const FreeRegions &parent_regions)
+    : subst (subst), parent_regions (parent_regions)
+  {}
+
+  void add_constraints_from_ty (BaseType *ty, Variance variance) override;
+  void add_constraints_from_region (const Region &region,
+				    Variance variance) override;
+  void add_constraints_from_generic_args (HirId ref, SubstitutionRef &subst,
+					  Variance variance,
+					  bool invariant_args) override{};
+  void add_constrints_from_param (ParamType &param, Variance variance) override;
+
+  Variance contra (Variance variance) override
+  {
+    return V::transform (variance, V::contravariant ());
+  }
+};
+
 } // namespace VarianceAnalysis
 
 } // namespace TyTy

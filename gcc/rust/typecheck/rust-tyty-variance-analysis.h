@@ -3,6 +3,8 @@
 
 #include "rust-tyty.h"
 
+#include <rust-bir-free-region.h>
+
 namespace Rust {
 namespace TyTy {
 namespace VarianceAnalysis {
@@ -29,6 +31,10 @@ query_type_variances (BaseType *type);
 std::vector<Region>
 query_type_regions (BaseType *type);
 
+std::vector<size_t>
+query_field_regions (const ADTType *parent, size_t variant_index,
+		     size_t field_index, const FreeRegions &parent_regions);
+
 /** Variance semilattice */
 class Variance
 {
@@ -48,22 +54,10 @@ class Variance
 public:
   constexpr Variance () : kind (TOP) {}
 
-  WARN_UNUSED_RESULT constexpr bool is_bivariant () const
-  {
-    return kind == BIVARIANT;
-  }
-  WARN_UNUSED_RESULT constexpr bool is_covariant () const
-  {
-    return kind == COVARIANT;
-  }
-  WARN_UNUSED_RESULT constexpr bool is_contravariant () const
-  {
-    return kind == CONTRAVARIANT;
-  }
-  WARN_UNUSED_RESULT constexpr bool is_invariant () const
-  {
-    return kind == INVARIANT;
-  }
+  constexpr bool is_bivariant () const { return kind == BIVARIANT; }
+  constexpr bool is_covariant () const { return kind == COVARIANT; }
+  constexpr bool is_contravariant () const { return kind == CONTRAVARIANT; }
+  constexpr bool is_invariant () const { return kind == INVARIANT; }
 
   static constexpr Variance bivariant () { return {BIVARIANT}; }
   static constexpr Variance covariant () { return {COVARIANT}; }
@@ -90,7 +84,6 @@ public:
   {
     return lhs.kind == rhs.kind;
   }
-
   constexpr friend bool operator!= (const Variance &lhs, const Variance &rhs)
   {
     return !(lhs == rhs);
