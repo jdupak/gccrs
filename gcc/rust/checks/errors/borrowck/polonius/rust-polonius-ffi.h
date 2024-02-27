@@ -27,6 +27,7 @@
 // to allow seamless binding generation on the Rust side.
 
 #include <cstdint>
+#include <cstddef>
 
 namespace Rust {
 namespace Polonius {
@@ -91,6 +92,13 @@ struct FactsView
   Slice<Pair<Path, Point>> path_accessed_at_base;
   Slice<Pair<Origin, Origin>> known_placeholder_subset;
   Slice<Pair<Origin, Loan>> placeholder;
+};
+
+struct Output
+{
+  bool loan_errors;
+  bool subset_errors;
+  bool move_errors;
 };
 
 } // namespace FFI
