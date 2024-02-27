@@ -35,7 +35,7 @@ struct FullPoint
   bool mid;
 
   explicit FullPoint (Point point)
-    : bb (point >> 16), stmt ((point & ~(1 << 16)) >> 1), mid (point & 1)
+    : bb (point >> 16), stmt ((point >> 1) & ((1 << 15) - 1)), mid (point & 1)
   {}
 
   friend std::ostream &operator<< (std::ostream &os, const FullPoint &point)
@@ -136,7 +136,7 @@ struct Facts
   void dump_var_used_at (std::ostream &os) const
   {
     for (auto &e : var_used_at)
-      os << e.first - 1 << " " << FullPoint (e.second) << "\n";
+      os << e.first << " " << FullPoint (e.second) << "\n";
   }
 
   void dump_var_defined_at (std::ostream &os) const
