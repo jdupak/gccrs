@@ -54,6 +54,13 @@ private:
     return result;
   }
 
+  // helper functions for method resolution
+  PlaceId
+  resolve_adjustments (const std::vector<Resolver::Adjustment> &adjustments,
+		       const PlaceId self);
+  PlaceId resolve_method (TyTy::FnType *fntype, TyTy::BaseType *receiver,
+			  location_t expr_locus);
+
   /** Common infrastructure for loops. */
   BuilderContext::LoopAndLabelCtx &setup_loop (HIR::BaseLoopExpr &expr);
 

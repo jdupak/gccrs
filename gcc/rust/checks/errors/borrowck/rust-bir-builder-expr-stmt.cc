@@ -21,6 +21,8 @@
 #include "rust-bir-builder-lazyboolexpr.h"
 #include "rust-bir-builder-pattern.h"
 #include "rust-bir-builder-struct.h"
+#include "rust-hir-path-probe.h"
+#include "rust-type-util.h"
 
 namespace Rust {
 namespace BIR {
@@ -281,7 +283,57 @@ ExprStmtBuilder::visit (HIR::CallExpr &expr)
 
 void
 ExprStmtBuilder::visit (HIR::MethodCallExpr &expr)
-{}
+{
+  // compile `self`
+  PlaceId self = visit_expr (*expr.get_receiver ());
+
+  TyTy::BaseType *receiver = nullptr;
+  bool ok
+    = ctx.tyctx.lookup_receiver (expr.get_mappings ().get_hirid (), &receiver);
+  TyTy::BaseType *lookup_fntype = nullptr;
+  ok = ctx.tyctx.lookup_type (
+    expr.get_method_name ().get_mappings ().get_hirid (), &lookup_fntype);
+  rust_assert (lookup_fntype->get_kind () == TyTy::TypeKind::FNDEF);
+  TyTy::FnType *fntype = static_cast<TyTy::FnType *> (lookup_fntype);
+
+  bool is_dyn_dispatch
+    = receiver->get_root ()->get_kind () == TyTy::TypeKind::DYNAMIC;
+
+  PlaceId method = INVALID_PLACE;
+  if (is_dyn_dispatch)
+    {
+      // TODO
+    }
+  else
+    {
+      method = resolve_method (fntype, receiver, expr.get_locus ());
+    }
+  // adjust self
+  HirId autoderef_mappings_id
+    = expr.get_receiver ()->get_mappings ().get_hirid ();
+  std::vector<Resolver::Adjustment> *adjustments = nullptr;
+  ok
+    = ctx.tyctx.lookup_autoderef_mappings (autoderef_mappings_id, &adjustments);
+  rust_assert (ok);
+
+  self = resolve_adjustments (*adjustments, self);
+
+  std::vector<PlaceId> arguments = visit_list (expr.get_arguments ());
+  arguments.insert (arguments.begin (), self);
+
+  const auto fn_type = ctx.place_db[method].tyty->as<const TyTy::FnType> ();
+  // skip the first parameter i.e `self` because we already applied the
+  // adjustments
+  for (size_t i = 1; i < fn_type->get_num_params (); ++i)
+    {
+      coercion_site (arguments[i], fn_type->get_param_type_at (i));
+    }
+
+  move_all (arguments);
+
+  return_expr (new CallExpr (method, std::move (arguments)), lookup_type (expr),
+	       true);
+}
 
 void
 ExprStmtBuilder::visit (HIR::FieldAccessExpr &expr)
@@ -679,5 +731,149 @@ ExprStmtBuilder::visit (HIR::ExprStmt &stmt)
   if (result != INVALID_PLACE)
     push_tmp_assignment (result);
 }
+
+PlaceId
+ExprStmtBuilder::resolve_method (TyTy::FnType *fntype, TyTy::BaseType *receiver,
+				 location_t expr_locus)
+{
+  DefId id = fntype->get_id ();
+  rust_assert (id != UNKNOWN_DEFID);
+
+  auto mappings = Analysis::Mappings::get ();
+
+  HIR::Item *resolved_item = mappings->lookup_defid (id);
+  if (resolved_item != nullptr)
+    {
+      TyTy::BaseType *resolved_fntype = nullptr;
+      bool fntype_resolved
+	= ctx.tyctx.lookup_type (resolved_item->get_mappings ().get_hirid (),
+				 &resolved_fntype);
+
+      rust_assert (fntype_resolved);
+      rust_assert (resolved_fntype->is<TyTy::FnType> ());
+      return ctx.place_db.get_constant (resolved_fntype);
+    }
+
+  // it might be resolved to a trait item
+  HIR::TraitItem *trait_item = mappings->lookup_trait_item_defid (id);
+  HIR::Trait *trait = mappings->lookup_trait_item_mapping (
+    trait_item->get_mappings ().get_hirid ());
+
+  Resolver::TraitReference *trait_ref
+    = &Resolver::TraitReference::error_node ();
+  bool ok
+    = ctx.tyctx.lookup_trait_reference (trait->get_mappings ().get_defid (),
+					&trait_ref);
+  rust_assert (ok);
+
+  // the type resolver can only resolve type bounds to their trait
+  // item so its up to us to figure out if this path should resolve
+  // to an trait-impl-block-item or if it can be defaulted to the
+  // trait-impl-item's definition
+  const HIR::PathIdentSegment segment (trait_item->trait_identifier ());
+  auto root = receiver->get_root ();
+  auto candidates
+    = Resolver::PathProbeImplTrait::Probe (root, segment, trait_ref);
+  if (candidates.size () == 0)
+    {
+      // this means we are defaulting back to the trait_item if
+      // possible
+      Resolver::TraitItemReference *trait_item_ref = nullptr;
+      bool ok = trait_ref->lookup_hir_trait_item (*trait_item, &trait_item_ref);
+      rust_assert (ok);				    // found
+      rust_assert (trait_item_ref->is_optional ()); // has definition
+
+      TyTy::BaseType *resolved_fntype = nullptr;
+      bool fntype_resolved
+	= ctx.tyctx.lookup_type (trait_item_ref->get_mappings ().get_hirid (),
+				 &resolved_fntype);
+
+      rust_assert (fntype_resolved);
+      rust_assert (resolved_fntype->is<TyTy::FnType> ());
+      return ctx.place_db.get_constant (resolved_fntype);
+    }
+
+  const Resolver::PathProbeCandidate *selectedCandidate = nullptr;
+
+  // filter for the possible case of non fn type items
+  std::set<Resolver::PathProbeCandidate> filteredFunctionCandidates;
+  for (auto &candidate : candidates)
+    {
+      bool is_fntype = candidate.ty->get_kind () == TyTy::TypeKind::FNDEF;
+      if (!is_fntype)
+	continue;
+
+      filteredFunctionCandidates.insert (candidate);
+    }
+
+  // look for the exact fntype
+  for (auto &candidate : filteredFunctionCandidates)
+    {
+      if (filteredFunctionCandidates.size () == 1)
+	{
+	  selectedCandidate = &candidate;
+	  break;
+	}
+
+      bool compatable
+	= Resolver::types_compatable (TyTy::TyWithLocation (candidate.ty),
+				      TyTy::TyWithLocation (fntype), expr_locus,
+				      false);
+
+      if (compatable)
+	{
+	  selectedCandidate = &candidate;
+	  break;
+	}
+    }
+
+  rust_assert (selectedCandidate != nullptr);
+
+  const Resolver::PathProbeCandidate &candidate = *selectedCandidate;
+  rust_assert (candidate.is_impl_candidate ());
+  rust_assert (candidate.ty->get_kind () == TyTy::TypeKind::FNDEF);
+  TyTy::FnType *candidate_call = static_cast<TyTy::FnType *> (candidate.ty);
+
+  return ctx.place_db.get_constant (candidate_call);
+}
+
+PlaceId
+ExprStmtBuilder::resolve_adjustments (
+  const std::vector<Resolver::Adjustment> &adjustments, const PlaceId self)
+{
+  PlaceId adjusted_self = self;
+  auto ty = ctx.place_db[adjusted_self].tyty;
+  for (const auto &adjustment : adjustments)
+    {
+      switch (adjustment.get_type ())
+	{
+	case Resolver::Adjustment::AdjustmentType::IMM_REF:
+	  adjusted_self
+	    = borrow_place (adjusted_self,
+			    new TyTy::ReferenceType (
+			      ty->get_ref (), TyTy::TyVar (ty->get_ref ()),
+			      Mutability::Imm));
+	  break;
+	case Resolver::Adjustment::AdjustmentType::MUT_REF:
+	  adjusted_self
+	    = borrow_place (adjusted_self,
+			    new TyTy::ReferenceType (
+			      ty->get_ref (), TyTy::TyVar (ty->get_ref ()),
+			      Mutability::Mut));
+	  break;
+	case Resolver::Adjustment::AdjustmentType::DEREF:
+	case Resolver::Adjustment::AdjustmentType::DEREF_MUT:
+	  // TODO: need to handle autoderef i.e achieve one reference in terms
+	  // of levels
+	case Resolver::Adjustment::AdjustmentType::ERROR:
+	case Resolver::Adjustment::AdjustmentType::INDIRECTION:
+	case Resolver::Adjustment::AdjustmentType::UNSIZE:
+	  // FIXME: Are these adjustments needed for borrowchecker
+	  break;
+	}
+    }
+  return adjusted_self;
+}
+
 } // namespace BIR
 } // namespace Rust
