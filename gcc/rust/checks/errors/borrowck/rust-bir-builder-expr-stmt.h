@@ -56,10 +56,7 @@ private:
 
   // helper functions for method resolution
   PlaceId
-  resolve_adjustments (const std::vector<Resolver::Adjustment> &adjustments,
-		       const PlaceId self);
-  PlaceId resolve_method (TyTy::FnType *fntype, TyTy::BaseType *receiver,
-			  location_t expr_locus);
+  visit_and_adjust (HIR::Expr &expr);
 
   /** Common infrastructure for loops. */
   BuilderContext::LoopAndLabelCtx &setup_loop (HIR::BaseLoopExpr &expr);
